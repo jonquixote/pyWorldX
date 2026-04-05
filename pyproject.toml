@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "pyworldx"
+version = "0.2.9.0"
+description = "Modular, unit-safe, auditable forecasting platform for long-horizon global systems modeling"
+authors = ["pyWorldX Team"]
+readme = "README.md"
+packages = [{include = "pyworldx"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+numpy = "^1.26"
+pandas = "^2.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+mypy = "^1.8"
+ruff = "^0.3"
+pandas-stubs = "^3.0.0.260204"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
