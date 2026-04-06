@@ -1,70 +1,61 @@
 """pyWorldX simulation engine.
 
-Orchestrates: sector initialization → dependency resolution →
-multi-rate time loop with RK4 → algebraic loop resolution →
-trajectory collection → RunResult.
+Orchestrates: sector initialization → dependency graph → algebraic
+loop detection → multi-rate time loop with RK4 → loop resolution →
+balance auditing → trajectory collection → RunResult.
 
-Sprint 1 scope: functional engine with fixed-point loop solver
-and multi-rate sub-stepping for the canonical R-I-P test world.
+Sprint 2: refactored to use general-purpose primitives from
+graph.py, loops.py, multirate.py, and balance.py.
 """
 
 from __future__ import annotations
 
+from typing import Any
 
 import numpy as np
 
+from pyworldx.core.balance import BalanceAuditor
+from pyworldx.core.graph import DependencyGraph, build_dependency_graph
 from pyworldx.core.integrators import rk4_step
-from pyworldx.core.quantities import DIMENSIONLESS, INDUSTRIAL_OUTPUT_UNITS, Quantity
+from pyworldx.core.loops import LoopResult, resolve_algebraic_loop
+from pyworldx.core.multirate import (
+    IncompatibleTimestepError,
+    MultirateScheduler,
+    resolve_substep_ratio,
+)
+from pyworldx.core.quantities import Quantity
 from pyworldx.core.result import RunResult
 from pyworldx.sectors.base import RunContext
 
-
-class IncompatibleTimestepError(Exception):
-    """Raised when master_dt / timestep_hint is not an integer."""
-
-
-class AlgebraicLoopConvergenceError(Exception):
-    """Raised when an algebraic loop does not converge."""
-
-
-def resolve_substep_ratio(
-    master_dt: float, timestep_hint: float, tol: float = 1e-9
-) -> int:
-    """Convert timestep_hint to integer substep ratio (Section 5.3).
-
-    Raises IncompatibleTimestepError if the ratio is not integer within tol.
-    """
-    ratio = master_dt / timestep_hint
-    ratio_int = int(round(ratio))
-    if abs(ratio - ratio_int) > tol:
-        raise IncompatibleTimestepError(
-            f"master_dt={master_dt} / timestep_hint={timestep_hint} = {ratio:.6f}, "
-            f"which is not an integer within tolerance {tol}. "
-            f"Adjust master_dt or timestep_hint so that their ratio is a whole number."
-        )
-    return ratio_int
-
-
-SectorLike = object  # Accept any object with the BaseSector interface
+# Re-export for backward compatibility
+__all__ = [
+    "Engine",
+    "IncompatibleTimestepError",
+    "resolve_substep_ratio",
+]
 
 
 class Engine:
     """The pyWorldX simulation engine.
 
     Runs sectors through an RK4 integration loop with:
+    - Automatic dependency graph construction and topological sort
+    - Algebraic loop detection and fixed-point resolution
     - Multi-rate sub-stepping for fast sectors
-    - Fixed-point algebraic loop resolution for simultaneous couplings
+    - Conservation balance auditing
     - NaN/inf guardrails
     """
 
     def __init__(
         self,
-        sectors: list[object],
+        sectors: list[Any],
         master_dt: float = 1.0,
         t_start: float = 0.0,
         t_end: float = 200.0,
         loop_tol: float = 1e-10,
         loop_max_iter: int = 100,
+        balance_warn_tol: float = 1e-6,
+        balance_fail_tol: float = 1e-3,
     ) -> None:
         self.sectors = sectors
         self.master_dt = master_dt
@@ -73,30 +64,37 @@ class Engine:
         self.loop_tol = loop_tol
         self.loop_max_iter = loop_max_iter
 
-        # Resolve sub-step ratios at init (fail loud)
-        self.substep_ratios: dict[str, int] = {}
-        for s in self.sectors:
-            hint = s.timestep_hint  # type: ignore[attr-defined]
-            if hint is not None:
-                self.substep_ratios[s.name] = resolve_substep_ratio(  # type: ignore[attr-defined]
-                    master_dt, hint
-                )
-            else:
-                self.substep_ratios[s.name] = 1  # type: ignore[attr-defined]
-
         # Build sector lookup
-        self._sectors_by_name: dict[str, object] = {
-            s.name: s for s in self.sectors  # type: ignore[attr-defined]
+        self._sectors_by_name: dict[str, Any] = {
+            s.name: s for s in self.sectors
         }
 
+        # Build multi-rate scheduler FIRST (validates substep ratios at init)
+        # Must come before graph so we know which sectors are sub-stepped
+        self.scheduler: MultirateScheduler = MultirateScheduler.from_sectors(
+            sectors, master_dt
+        )
+
+        # Backward-compatible substep_ratios attribute
+        self.substep_ratios = self.scheduler.sector_ratios
+
         # Classify sectors
-        self._single_rate: list[object] = []
-        self._sub_stepped: list[object] = []
-        for s in self.sectors:
-            if self.substep_ratios[s.name] > 1:  # type: ignore[attr-defined]
-                self._sub_stepped.append(s)
-            else:
-                self._single_rate.append(s)
+        self._sub_stepped = self.scheduler.get_sub_stepped_sectors(sectors)
+        self._single_rate = self.scheduler.get_single_rate_sectors(sectors)
+
+        # Identify sub-stepped sector names for graph builder
+        sub_stepped_names = {s.name for s in self._sub_stepped}
+
+        # Build dependency graph (detects loops in single-rate domain only)
+        self.dep_graph: DependencyGraph = build_dependency_graph(
+            sectors, sub_stepped_names=sub_stepped_names
+        )
+
+        # Balance auditor
+        self._auditor = BalanceAuditor(
+            warn_tol=balance_warn_tol,
+            fail_tol=balance_fail_tol,
+        )
 
     def run(self) -> RunResult:
         """Execute the full simulation and return structured results."""
@@ -110,137 +108,121 @@ class Engine:
         all_stocks: dict[str, Quantity] = {}
         sector_stock_names: dict[str, list[str]] = {}
         for s in self.sectors:
-            sector_stocks = s.init_stocks(ctx)  # type: ignore[attr-defined]
+            sector_stocks = s.init_stocks(ctx)
             all_stocks.update(sector_stocks)
-            sector_stock_names[s.name] = list(sector_stocks.keys())  # type: ignore[attr-defined]
+            sector_stock_names[s.name] = list(sector_stocks.keys())
 
         # Shared auxiliary/observable state (inter-sector communication)
         shared: dict[str, Quantity] = {}
 
-        # Initialize shared state with defaults so first compute works
-        shared["extraction_rate"] = Quantity(0.0, "resource_units")
-        shared["industrial_output"] = Quantity(0.0, "industrial_output_units")
-        shared["pollution_fraction"] = Quantity(0.0, "dimensionless")
-        shared["pollution_efficiency"] = Quantity(1.0, "dimensionless")
+        # Initialize shared state with defaults from all sector writes
+        for s in self.sectors:
+            for var in s.declares_writes():
+                if var not in all_stocks and not var.startswith("d_"):
+                    shared[var] = Quantity(0.0, "dimensionless")
+
+        # Set known defaults for canonical model
+        shared.setdefault(
+            "pollution_efficiency", Quantity(1.0, "dimensionless")
+        )
 
         # ── Bootstrap: compute initial auxiliaries at t=0 ────────────
-        # Without this, extraction_rate=0 → io = A*K^β*0^(1-β)*pe = 0
-        # forever (Cobb-Douglas killed by zero input).
-        # First pass: compute R's auxiliaries with an initial guess for io,
-        # then resolve the I<->P loop at t=0.
-
-        # Initial guess for industrial_output from K alone (ignoring resources)
-        # io_guess = A * K^beta * 1.0 (assume full extraction capacity initially)
-        k0 = all_stocks["K"].magnitude
-        io_guess = 1.0 * (k0 ** 0.7) * 1.0  # A=1, pe=1, er=1 guess
-        shared["industrial_output"] = Quantity(io_guess, "industrial_output_units")
-
-        # Bootstrap R sector to get initial extraction_rate
-        for s in self._sub_stepped:
-            r_stocks = {k: all_stocks[k] for k in sector_stock_names[s.name]}  # type: ignore[attr-defined]
-            r_out = s.compute(self.t_start, r_stocks, shared, ctx)  # type: ignore[attr-defined]
-            for k, v in r_out.items():
-                if not k.startswith("d_"):
-                    shared[k] = v
-
-        # Bootstrap I<->P loop at t=0 to get consistent initial auxiliaries
-        self._resolve_ip_loop(
-            self.t_start, all_stocks, shared, ctx,
-            sector_stock_names, []
+        self._bootstrap_initial_state(
+            all_stocks, shared, sector_stock_names, ctx
         )
 
-        # Re-compute R with converged industrial_output
-        for s in self._sub_stepped:
-            r_stocks = {k: all_stocks[k] for k in sector_stock_names[s.name]}  # type: ignore[attr-defined]
-            r_out = s.compute(self.t_start, r_stocks, shared, ctx)  # type: ignore[attr-defined]
-            for k, v in r_out.items():
-                if not k.startswith("d_"):
-                    shared[k] = v
-
-        # Final I<->P pass with correct extraction_rate
-        self._resolve_ip_loop(
-            self.t_start, all_stocks, shared, ctx,
-            sector_stock_names, []
-        )
+        # ── Collect all observable names for recording ───────────────
+        obs_names: list[str] = []
+        for s in self.sectors:
+            for var in s.declares_writes():
+                if var not in all_stocks and var not in obs_names:
+                    obs_names.append(var)
 
         # ── Recording setup ──────────────────────────────────────────
         time_index: list[float] = [self.t_start]
         traj: dict[str, list[float]] = {}
-        # Initialize trajectory recording for all stocks and observables
-        for name, qty in all_stocks.items():
-            traj[name] = [qty.magnitude]
-        for obs in ["extraction_rate", "industrial_output",
-                     "pollution_fraction", "pollution_efficiency"]:
-            traj[obs] = [shared[obs].magnitude]
+        for name in all_stocks:
+            traj[name] = [all_stocks[name].magnitude]
+        for obs in obs_names:
+            if obs in shared:
+                traj[obs] = [shared[obs].magnitude]
 
         warnings_list: list[str] = []
+        loop_diagnostics: list[LoopResult] = []
 
         # ── Master time loop ─────────────────────────────────────────
         t = self.t_start
         steps = int(round((self.t_end - self.t_start) / self.master_dt))
 
         for step_idx in range(steps):
-            # ── 1) Sub-stepped sectors (R) advance across the master step ──
+            # Snapshot stocks before step for balance auditing
+            stocks_before = {k: Quantity(v.magnitude, v.unit) for k, v in all_stocks.items()}
+
+            # ── 1) Sub-stepped sectors advance across master step ────
             for s in self._sub_stepped:
-                ratio = self.substep_ratios[s.name]  # type: ignore[attr-defined]
-                sub_dt = self.master_dt / ratio
-                sub_stocks = {
-                    k: all_stocks[k]
-                    for k in sector_stock_names[s.name]  # type: ignore[attr-defined]
-                }
-                sub_inputs = dict(shared)  # frozen at master boundary
-                sub_t = t
-
-                for _sub in range(ratio):
-                    def make_sub_deriv(
-                        sector: object, inputs: dict[str, Quantity]
-                    ) -> object:
-                        def deriv(
-                            t_: float, st: dict[str, Quantity]
-                        ) -> dict[str, Quantity]:
-                            result = sector.compute(t_, st, inputs, ctx)  # type: ignore[attr-defined]
-                            # Return only derivative entries (d_ prefix)
-                            return {
-                                k.replace("d_", ""): v
-                                for k, v in result.items()
-                                if k.startswith("d_")
-                            }
-                        return deriv
-
-                    deriv_fn = make_sub_deriv(s, sub_inputs)
-                    sub_stocks = rk4_step(deriv_fn, sub_t, sub_stocks, sub_dt)  # type: ignore[arg-type]
-                    sub_t += sub_dt
-
-                # Update global stocks from sub-stepped sector
-                for k, v in sub_stocks.items():
+                record = self.scheduler.advance_sector(
+                    sector=s,
+                    t=t,
+                    stocks=all_stocks,
+                    frozen_inputs=dict(shared),
+                    ctx=ctx,
+                    sector_stock_names=sector_stock_names[s.name],
+                )
+                # Update global stocks
+                for k, v in record.final_stocks.items():
                     all_stocks[k] = v
+                # Update shared auxiliaries
+                for k, v in record.auxiliaries.items():
+                    shared[k] = v
 
-                # Compute auxiliaries at end of master step
-                final_out = s.compute(t + self.master_dt, sub_stocks, sub_inputs, ctx)  # type: ignore[attr-defined]
-                for k, v in final_out.items():
-                    if not k.startswith("d_"):
-                        shared[k] = v
+            # ── 2) Resolve algebraic loops in single-rate domain ─────
+            for loop_info in self.dep_graph.loops:
+                loop_sectors = [
+                    self._sectors_by_name[name]
+                    for name in loop_info.sector_names
+                    if not self.scheduler.is_sub_stepped(name)
+                ]
+                if not loop_sectors:
+                    continue
 
-            # ── 2) Single-rate sectors (I, P) with algebraic loop ────
-            # I and P are coupled: I needs pollution_efficiency from P,
-            # P needs industrial_output from I.  Fixed-point iteration.
-            self._resolve_ip_loop(t + self.master_dt, all_stocks, shared, ctx,
-                                  sector_stock_names, warnings_list)
+                stock_map = {
+                    s.name: {
+                        k: all_stocks[k]
+                        for k in sector_stock_names[s.name]
+                    }
+                    for s in loop_sectors
+                }
+
+                lr = resolve_algebraic_loop(
+                    loop_sectors=loop_sectors,
+                    sector_stock_map=stock_map,
+                    shared=shared,
+                    t=t + self.master_dt,
+                    ctx=ctx,
+                    tol=loop_info.tol,
+                    max_iter=loop_info.max_iter,
+                    damping=loop_info.damping,
+                    loop_name=loop_info.name,
+                )
+                loop_diagnostics.append(lr)
 
             # ── 3) Integrate single-rate sector stocks via RK4 ───────
+            flow_outputs: dict[str, dict[str, Quantity]] = {}
             for s in self._single_rate:
-                s_name: str = s.name  # type: ignore[attr-defined]
-                s_stock_names = sector_stock_names[s_name]
+                s_stock_names = sector_stock_names[s.name]
                 s_stocks = {k: all_stocks[k] for k in s_stock_names}
 
-                def make_sr_deriv(
-                    sector: object,
-                    shared_st: dict[str, Quantity],
-                ) -> object:
+                # Capture flows for balance auditing
+                current_flows = s.compute(t, s_stocks, shared, ctx)
+                flow_outputs[s.name] = current_flows
+
+                def _make_deriv(
+                    sector: Any, shared_st: dict[str, Quantity], context: Any
+                ) -> Any:
                     def deriv(
                         t_: float, st: dict[str, Quantity]
                     ) -> dict[str, Quantity]:
-                        result = sector.compute(t_, st, shared_st, ctx)  # type: ignore[attr-defined]
+                        result = sector.compute(t_, st, shared_st, context)
                         return {
                             k.replace("d_", ""): v
                             for k, v in result.items()
@@ -248,104 +230,144 @@ class Engine:
                         }
                     return deriv
 
-                deriv_fn = make_sr_deriv(s, shared)
-                new_stocks = rk4_step(deriv_fn, t, s_stocks, self.master_dt)  # type: ignore[arg-type]
+                deriv_fn = _make_deriv(s, shared, ctx)
+                new_stocks = rk4_step(deriv_fn, t, s_stocks, self.master_dt)
                 for k, v in new_stocks.items():
                     all_stocks[k] = v
 
-            # ── 4) Record state ──────────────────────────────────────
+            # ── 4) Balance auditing ──────────────────────────────────
+            self._auditor.audit_sectors(
+                sectors=self.sectors,
+                stocks_before=stocks_before,
+                stocks_after=all_stocks,
+                flow_outputs=flow_outputs,
+                t=t + self.master_dt,
+                dt=self.master_dt,
+            )
+
+            # ── 5) Record state ──────────────────────────────────────
             t += self.master_dt
             time_index.append(t)
             for name in all_stocks:
                 traj[name].append(all_stocks[name].magnitude)
-            for obs in ["extraction_rate", "industrial_output",
-                        "pollution_fraction", "pollution_efficiency"]:
-                traj[obs].append(shared[obs].magnitude)
+            for obs in obs_names:
+                if obs in shared:
+                    traj[obs].append(shared[obs].magnitude)
 
         # ── Build result ─────────────────────────────────────────────
         result_trajectories = {k: np.array(v) for k, v in traj.items()}
+
+        # Include balance audit summary in warnings
+        audit_summary = self._auditor.summary()
+        if audit_summary.get("WARN", 0) > 0:
+            warnings_list.append(
+                f"Balance auditor: {audit_summary['WARN']} WARN results"
+            )
+        if audit_summary.get("FAIL", 0) > 0:
+            warnings_list.append(
+                f"Balance auditor: {audit_summary['FAIL']} FAIL results"
+            )
+
         return RunResult(
             time_index=np.array(time_index),
             trajectories=result_trajectories,
             warnings=warnings_list,
+            balance_audits=[r.to_dict() for r in self._auditor.results],
         )
 
-    def _resolve_ip_loop(
+    def _bootstrap_initial_state(
         self,
-        t: float,
         all_stocks: dict[str, Quantity],
         shared: dict[str, Quantity],
-        ctx: RunContext,
         sector_stock_names: dict[str, list[str]],
-        warnings_list: list[str],
+        ctx: RunContext,
     ) -> None:
-        """Resolve the I<->P algebraic loop via fixed-point iteration.
+        """Compute consistent initial auxiliaries at t=0.
 
-        I needs pollution_efficiency from P.
-        P needs industrial_output from I.
-        Iterate until convergence.
+        Without this, sectors with Cobb-Douglas or multiplicative coupling
+        to initially-zero auxiliaries will produce zero output permanently.
+
+        Strategy: seed initial guesses for auxiliary variables, then
+        iterate: single-rate loop resolution → sub-stepped sectors →
+        repeat until consistent.
         """
-        industry = self._sectors_by_name.get("industry")
-        pollution = self._sectors_by_name.get("pollution")
-        if industry is None or pollution is None:
-            return
-
-        i_stocks = {
-            k: all_stocks[k] for k in sector_stock_names["industry"]
-        }
-        p_stocks = {
-            k: all_stocks[k] for k in sector_stock_names["pollution"]
-        }
-
-        # Use current shared values as initial guess
-        prev_io = shared.get(
-            "industrial_output", Quantity(0.0, INDUSTRIAL_OUTPUT_UNITS)
-        ).magnitude
-        prev_pe = shared.get(
-            "pollution_efficiency", Quantity(1.0, DIMENSIONLESS)
-        ).magnitude
-
-        for iteration in range(self.loop_max_iter):
-            # Compute I with current pollution_efficiency guess
-            i_inputs = dict(shared)
-            i_inputs["pollution_efficiency"] = Quantity(prev_pe, DIMENSIONLESS)
-            i_out = industry.compute(t, i_stocks, i_inputs, ctx)  # type: ignore[attr-defined]
-
-            new_io = i_out["industrial_output"].magnitude
-
-            # Compute P with new industrial_output
-            p_inputs = dict(shared)
-            p_inputs["industrial_output"] = Quantity(
-                new_io, INDUSTRIAL_OUTPUT_UNITS
-            )
-            p_out = pollution.compute(t, p_stocks, p_inputs, ctx)  # type: ignore[attr-defined]
-
-            new_pe = p_out["pollution_efficiency"].magnitude
-
-            # Check convergence
-            io_diff = abs(new_io - prev_io)
-            pe_diff = abs(new_pe - prev_pe)
-            io_rel = io_diff / abs(new_io) if new_io != 0 else io_diff
-            pe_rel = pe_diff / abs(new_pe) if new_pe != 0 else pe_diff
-
-            converged = io_rel < self.loop_tol and pe_rel < self.loop_tol
-
-            prev_io = new_io
-            prev_pe = new_pe
-
-            if converged:
-                break
-        else:
-            raise AlgebraicLoopConvergenceError(
-                f"I<->P loop did not converge after {self.loop_max_iter} "
-                f"iterations at t={t}. Last residuals: io_rel={io_rel:.2e}, "
-                f"pe_rel={pe_rel:.2e}"
+        # Seed an initial guess for industrial_output from K stock
+        # io_guess = A * K^beta * er^(1-beta) * pe
+        # With er=1 (guess), pe=1 → io = K^0.7
+        if "K" in all_stocks:
+            k0 = all_stocks["K"].magnitude
+            io_guess = k0 ** 0.7  # A=1, er=1, pe=1
+            shared["industrial_output"] = Quantity(
+                io_guess, "industrial_output_units"
             )
 
-        # Update shared state with converged values
-        for k, v in i_out.items():
-            if not k.startswith("d_"):
-                shared[k] = v
-        for k, v in p_out.items():
-            if not k.startswith("d_"):
-                shared[k] = v
+        # Pass 1: Compute sub-stepped sectors with guessed inputs
+        for s in self._sub_stepped:
+            stocks = {k: all_stocks[k] for k in sector_stock_names[s.name]}
+            try:
+                out = s.compute(self.t_start, stocks, shared, ctx)
+                for k, v in out.items():
+                    if not k.startswith("d_"):
+                        shared[k] = v
+            except (KeyError, ZeroDivisionError):
+                pass
+
+        # Pass 2: Resolve algebraic loops at t=0
+        for loop_info in self.dep_graph.loops:
+            loop_sectors = [
+                self._sectors_by_name[name]
+                for name in loop_info.sector_names
+                if not self.scheduler.is_sub_stepped(name)
+            ]
+            if not loop_sectors:
+                continue
+            stock_map = {
+                s.name: {k: all_stocks[k] for k in sector_stock_names[s.name]}
+                for s in loop_sectors
+            }
+            resolve_algebraic_loop(
+                loop_sectors=loop_sectors,
+                sector_stock_map=stock_map,
+                shared=shared,
+                t=self.t_start,
+                ctx=ctx,
+                tol=self.loop_tol,
+                max_iter=self.loop_max_iter,
+                loop_name=f"{loop_info.name}_bootstrap",
+            )
+
+        # Pass 3: Re-compute sub-stepped sectors with converged loop values
+        for s in self._sub_stepped:
+            stocks = {k: all_stocks[k] for k in sector_stock_names[s.name]}
+            try:
+                out = s.compute(self.t_start, stocks, shared, ctx)
+                for k, v in out.items():
+                    if not k.startswith("d_"):
+                        shared[k] = v
+            except (KeyError, ZeroDivisionError):
+                pass
+
+        # Pass 4: Final loop resolution with correct extraction_rate
+        for loop_info in self.dep_graph.loops:
+            loop_sectors = [
+                self._sectors_by_name[name]
+                for name in loop_info.sector_names
+                if not self.scheduler.is_sub_stepped(name)
+            ]
+            if not loop_sectors:
+                continue
+            stock_map = {
+                s.name: {k: all_stocks[k] for k in sector_stock_names[s.name]}
+                for s in loop_sectors
+            }
+            resolve_algebraic_loop(
+                loop_sectors=loop_sectors,
+                sector_stock_map=stock_map,
+                shared=shared,
+                t=self.t_start,
+                ctx=ctx,
+                tol=self.loop_tol,
+                max_iter=self.loop_max_iter,
+                loop_name=f"{loop_info.name}_bootstrap_final",
+            )
+
