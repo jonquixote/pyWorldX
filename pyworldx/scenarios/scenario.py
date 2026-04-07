@@ -182,11 +182,24 @@ def capital_reallocation_to_maintenance() -> Scenario:
     )
 
 
-# Collection of all built-in scenarios
+def wiliam_high_military_drag() -> Scenario:
+    """WILIAM scenario: high military spending drags productive capital."""
+    return Scenario(
+        name="wiliam_high_military_drag",
+        description="Military spending increased to 5% of output, crowding out productive investment",
+        start_year=1900,
+        end_year=2100,
+        parameter_overrides={"wiliam_economy.military_fraction": 0.05},
+        tags=["wiliam", "military", "drag"],
+    )
+
+
+# Collection of all built-in scenarios (Section 11.3)
 BUILTIN_SCENARIOS: dict[str, Callable[[], Scenario]] = {
     "baseline_world3": baseline_world3,
     "high_resource_discovery": high_resource_discovery,
     "pollution_control_push": pollution_control_push,
     "agricultural_efficiency_push": agricultural_efficiency_push,
     "capital_reallocation_to_maintenance": capital_reallocation_to_maintenance,
+    "wiliam_high_military_drag": wiliam_high_military_drag,
 }

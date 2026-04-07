@@ -1,0 +1,1 @@
+"""Ontology layer — canonical variable names, dimensions, and semantics."""
