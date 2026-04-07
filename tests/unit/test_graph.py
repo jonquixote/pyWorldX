@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 
 from pyworldx.core.graph import (
-    UndeclaredAlgebraicLoopError,
     build_dependency_graph,
 )
 from pyworldx.core.quantities import DIMENSIONLESS, Quantity
@@ -229,10 +227,14 @@ class TestDependencyGraph:
         assert graph.loops[0].declared is True
         assert graph.loops[0].name == "xy_loop"
 
-    def test_undeclared_loop_raises(self) -> None:
-        """P<->Q without hints should raise UndeclaredAlgebraicLoopError."""
-        with pytest.raises(UndeclaredAlgebraicLoopError):
-            build_dependency_graph([MockUndeclaredLoopP(), MockUndeclaredLoopQ()])
+    def test_undeclared_loop_treated_as_delayed(self) -> None:
+        """P<->Q without hints should be treated as delayed coupling (not error)."""
+        graph = build_dependency_graph([MockUndeclaredLoopP(), MockUndeclaredLoopQ()])
+        # No algebraic loops (undeclared cycle broken as delayed coupling)
+        assert len(graph.loops) == 0
+        # Both sectors should still be in execution order
+        assert "sector_p" in graph.execution_order
+        assert "sector_q" in graph.execution_order
 
     def test_canonical_rip_graph(self) -> None:
         """The R-I-P canonical model should produce correct graph."""

@@ -126,22 +126,48 @@ def build_dependency_graph(
     # Match detected cycles against declarations
     graph.loops = _match_cycles_to_declarations(cycles, declared_loops, sectors)
 
-    # Check for undeclared cross-sector cycles
+    # Separate declared vs undeclared loops
+    declared_loop_sets: list[set[str]] = []
+    kept_loops: list[LoopInfo] = []
+
     for loop in graph.loops:
-        if not loop.declared:
-            raise UndeclaredAlgebraicLoopError(
-                f"Undeclared cross-sector algebraic loop detected: "
-                f"sectors={loop.sector_names}, variables={loop.variables}. "
-                f"Add algebraic_loop_hints() to the participating sectors."
-            )
+        if loop.declared:
+            kept_loops.append(loop)
+            declared_loop_sets.append(set(loop.sector_names))
+
+    graph.loops = kept_loops
+
+    # Build effective edges: start with all single-rate edges,
+    # then iteratively break non-declared cycle edges until acyclic.
+    # This is needed because DFS may not find all cycles in one pass.
+    effective_edges: dict[str, set[str]] = {
+        s_name: set(sr_edges.get(s_name, set()))
+        for s_name in single_rate_names
+    }
+
+    def _is_declared_edge(a: str, b: str) -> bool:
+        """True if edge (a, b) is inside a declared algebraic loop."""
+        return any(a in dls and b in dls for dls in declared_loop_sets)
+
+    # Iteratively break undeclared cycles
+    for _ in range(len(single_rate_names) + 1):
+        remaining_cycles = _find_cycles(effective_edges)
+        if not remaining_cycles:
+            break
+        for cycle in remaining_cycles:
+            cycle_set = set(cycle)
+            for s_name in cycle:
+                for dep in list(effective_edges.get(s_name, set())):
+                    if dep in cycle_set and not _is_declared_edge(s_name, dep):
+                        effective_edges[s_name].discard(dep)
 
     # ── Topological sort ─────────────────────────────────────────────
     # Sub-stepped sectors always execute first (frozen inputs).
     # Single-rate sectors are sorted topologically with loop groups
-    # collapsed into single nodes.
+    # collapsed into single nodes.  Delayed edges are excluded.
     loop_sector_sets = [set(loop.sector_names) for loop in graph.loops]
     graph.execution_order = _build_execution_order(
-        all_edges=graph.edges,
+        all_edges=effective_edges,
         sub_stepped=sub_stepped_names,
         single_rate=single_rate_names,
         loop_groups=loop_sector_sets,
@@ -202,9 +228,26 @@ def _match_cycles_to_declarations(
     declared_loops: list[dict[str, Any]],
     sectors: list[Any],
 ) -> list[LoopInfo]:
-    """Match detected cycles against sector-declared loop hints."""
+    """Match detected cycles against sector-declared loop hints.
+
+    A cycle matches a declaration only if:
+    1. The declared hint's variables overlap with the cycle's variables.
+    2. ALL sectors in the cycle declare a hint with the same name.
+    This prevents cycles like {agriculture, pollution, population} from
+    falsely matching the capital_pollution_loop hint that only capital
+    and pollution declare.
+    """
     result: list[LoopInfo] = []
     matched_cycle_keys: set[str] = set()
+
+    # Pre-compute: for each sector, collect declared loop hint names
+    sector_map = {s.name: s for s in sectors}
+    sector_hint_names: dict[str, set[str]] = {}
+    for s in sectors:
+        hints = s.algebraic_loop_hints()
+        sector_hint_names[s.name] = {
+            str(h.get("name", "")) for h in hints
+        }
 
     for cycle in cycles:
         cycle_key = ",".join(sorted(cycle))
@@ -214,7 +257,6 @@ def _match_cycles_to_declarations(
 
         # Find variables involved in this cycle
         cycle_vars: list[str] = []
-        sector_map = {s.name: s for s in sectors}
         for s_name in cycle:
             if s_name not in sector_map:
                 continue
@@ -230,22 +272,36 @@ def _match_cycles_to_declarations(
                         if var not in cycle_vars:
                             cycle_vars.append(var)
 
-        # Try to match to a declaration
+        # Try to match to a declaration:
+        # Require ALL sectors in the cycle to declare the same hint name
         matched = False
         for decl in declared_loops:
+            decl_name = str(decl.get("name", ""))
             decl_vars = set(decl.get("variables", []))
-            if decl_vars & set(cycle_vars):
-                result.append(LoopInfo(
-                    name=str(decl.get("name", f"loop_{'_'.join(sorted(cycle))}")),
-                    sector_names=list(cycle),
-                    variables=cycle_vars,
-                    declared=True,
-                    solver=str(decl.get("solver", "fixed_point")),
-                    tol=float(decl.get("tol", 1e-10)),
-                    max_iter=int(decl.get("max_iter", 100)),
-                ))
-                matched = True
-                break
+
+            # Check variable overlap
+            if not (decl_vars & set(cycle_vars)):
+                continue
+
+            # Strict check: every sector in the cycle must declare this hint
+            all_declare = all(
+                decl_name in sector_hint_names.get(s_name, set())
+                for s_name in cycle
+            )
+            if not all_declare:
+                continue
+
+            result.append(LoopInfo(
+                name=decl_name,
+                sector_names=list(cycle),
+                variables=cycle_vars,
+                declared=True,
+                solver=str(decl.get("solver", "fixed_point")),
+                tol=float(decl.get("tol", 1e-10)),
+                max_iter=int(decl.get("max_iter", 100)),
+            ))
+            matched = True
+            break
 
         if not matched:
             result.append(LoopInfo(

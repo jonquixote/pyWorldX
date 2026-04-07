@@ -115,16 +115,18 @@ class Engine:
         # Shared auxiliary/observable state (inter-sector communication)
         shared: dict[str, Quantity] = {}
 
+        # Set known defaults BEFORE declares_writes loop zeroes them
+        shared["pollution_efficiency"] = Quantity(1.0, "dimensionless")
+
         # Initialize shared state with defaults from all sector writes
         for s in self.sectors:
             for var in s.declares_writes():
                 if var not in all_stocks and not var.startswith("d_"):
-                    shared[var] = Quantity(0.0, "dimensionless")
+                    shared.setdefault(var, Quantity(0.0, "dimensionless"))
 
-        # Set known defaults for canonical model
-        shared.setdefault(
-            "pollution_efficiency", Quantity(1.0, "dimensionless")
-        )
+        # Seed stocks into shared so cross-sector stock reads work
+        for k, v in all_stocks.items():
+            shared[k] = v
 
         # ── Bootstrap: compute initial auxiliaries at t=0 ────────────
         self._bootstrap_initial_state(
@@ -216,6 +218,13 @@ class Engine:
                 current_flows = s.compute(t, s_stocks, shared, ctx)
                 flow_outputs[s.name] = current_flows
 
+                # Merge non-derivative outputs into shared so subsequent
+                # sectors in this step see updated values (e.g. agriculture's
+                # food_per_capita visible to population)
+                for k, v in current_flows.items():
+                    if not k.startswith("d_"):
+                        shared[k] = v
+
                 def _make_deriv(
                     sector: Any, shared_st: dict[str, Quantity], context: Any
                 ) -> Any:
@@ -234,6 +243,9 @@ class Engine:
                 new_stocks = rk4_step(deriv_fn, t, s_stocks, self.master_dt)
                 for k, v in new_stocks.items():
                     all_stocks[k] = v
+                    # Merge updated stocks into shared so other sectors
+                    # (and next timestep) see current stock values
+                    shared[k] = v
 
             # ── 4) Balance auditing ──────────────────────────────────
             self._auditor.audit_sectors(
@@ -336,7 +348,22 @@ class Engine:
                 loop_name=f"{loop_info.name}_bootstrap",
             )
 
-        # Pass 3: Re-compute sub-stepped sectors with converged loop values
+        # Pass 3: Compute ALL single-rate sectors to populate their outputs
+        # (e.g. agriculture's food_per_capita) — not just loop sectors
+        for s_name in self.dep_graph.execution_order:
+            s = self._sectors_by_name.get(s_name)
+            if s is None or self.scheduler.is_sub_stepped(s_name):
+                continue
+            stocks = {k: all_stocks[k] for k in sector_stock_names[s_name]}
+            try:
+                out = s.compute(self.t_start, stocks, shared, ctx)
+                for k, v in out.items():
+                    if not k.startswith("d_"):
+                        shared[k] = v
+            except (KeyError, ZeroDivisionError):
+                pass
+
+        # Pass 3b: Re-compute sub-stepped sectors with converged values
         for s in self._sub_stepped:
             stocks = {k: all_stocks[k] for k in sector_stock_names[s.name]}
             try:
