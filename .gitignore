@@ -1,11 +1,16 @@
+# pyWorldX gitignore
+# Data pipeline — track all code, ignore only data and caches
+data_pipeline/data/
+data_pipeline/.cache/
+data_pipeline/__pycache__/
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
 *.egg-info/
 dist/
 build/
+.eggs/
 *.egg
 
 # Virtual environments
@@ -18,21 +23,15 @@ venv/
 *.swp
 *.swo
 
+# OS
+.DS_Store
+Thumbs.db
+
 # mypy
 .mypy_cache/
-
-# pytest
-.pytest_cache/
 
 # ruff
 .ruff_cache/
 
-# Poetry
-poetry.lock
-
-# Data cache
-pyworldx/data/cache/
-
-# OS
-.DS_Store
-Thumbs.db
+# pytest
+.pytest_cache/
