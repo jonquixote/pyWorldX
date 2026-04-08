@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -20,7 +20,7 @@ def interpolate_annual(
     end = int(series.index.max())
     annual_idx = pd.RangeIndex(start, end + 1)
     reindexed = series.reindex(annual_idx)
-    result: pd.Series[Any] = reindexed.interpolate(method=method)
+    result: pd.Series[Any] = reindexed.interpolate(method=cast(Any, method))
     if transform_log is not None:
         transform_log.append(
             f"interpolate_annual: method={method}, {start}-{end}"
@@ -41,7 +41,7 @@ def resample_to_timestep(
     end = float(series.index.max())
     new_idx = np.arange(start, end + dt / 2, dt)
     reindexed = series.reindex(pd.Index(new_idx))
-    result: pd.Series[Any] = reindexed.interpolate(method=method)
+    result: pd.Series[Any] = reindexed.interpolate(method=cast(Any, method))
     if transform_log is not None:
         transform_log.append(
             f"resample_to_timestep: dt={dt}, method={method}"

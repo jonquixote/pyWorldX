@@ -102,7 +102,7 @@ def check_regression(
     report = RegressionReport(reference_file=ref_file)
 
     t_ref = reference.get("t")
-    t_model = result.time_index
+    _t_model = result.time_index
 
     if t_ref is None:
         report.results.append(RegressionCheckResult(

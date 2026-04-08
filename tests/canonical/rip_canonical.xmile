@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xmile version="1.0" xmlns="http://docs.oasis-open.org/xmile/ns/XMILE/v1.0"
+       xmlns:isee="http://iseesystems.com/XMILE">
+  <header>
+    <name>R-I-P Canonical Test World</name>
+    <caption>
+      Canonical 3-sector test world for pyWorldX (Section 17.1).
+      Resources (R), Industry (I), Pollution (P).
+      I and P form an algebraic loop; R is sub-stepped at 4:1.
+      Parameters match pyworldx.sectors.rip_sectors exactly.
+    </caption>
+    <product version="0.2.9" lang="en">pyWorldX</product>
+  </header>
+
+  <sim_specs>
+    <start>0</start>
+    <stop>200</stop>
+    <dt>1</dt>
+    <method>rk4</method>
+  </sim_specs>
+
+  <model name="RIP_Canonical">
+    <variables>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           SECTOR R: Non-Renewable Resources (sub-stepped at dt=0.25)
+           ══════════════════════════════════════════════════════════════ -->
+
+      <stock name="R">
+        <doc>Non-renewable resource stock (resource_units)</doc>
+        <eqn>1000</eqn>
+        <outflow>extraction_rate</outflow>
+      </stock>
+
+      <flow name="extraction_rate">
+        <doc>extraction_rate = k_ext * R * industrial_output * (1 - pollution_fraction)</doc>
+        <eqn>k_ext * R * industrial_output * (1 - pollution_fraction)</eqn>
+      </flow>
+
+      <aux name="k_ext">
+        <eqn>0.01</eqn>
+      </aux>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           SECTOR I: Industry (Cobb-Douglas production)
+           ══════════════════════════════════════════════════════════════ -->
+
+      <stock name="K">
+        <doc>Industrial capital stock (capital_units)</doc>
+        <eqn>100</eqn>
+        <inflow>investment</inflow>
+        <outflow>depreciation</outflow>
+      </stock>
+
+      <flow name="investment">
+        <doc>investment = alpha * industrial_output</doc>
+        <eqn>alpha * industrial_output</eqn>
+      </flow>
+
+      <flow name="depreciation">
+        <doc>depreciation = delta * K</doc>
+        <eqn>delta * K</eqn>
+      </flow>
+
+      <aux name="industrial_output">
+        <doc>IO = A * K^beta * extraction_rate^(1-beta) * pollution_efficiency</doc>
+        <eqn>A * K^beta * extraction_rate^(1 - beta) * pollution_efficiency</eqn>
+      </aux>
+
+      <aux name="alpha">
+        <eqn>0.2</eqn>
+      </aux>
+
+      <aux name="delta">
+        <eqn>0.05</eqn>
+      </aux>
+
+      <aux name="A">
+        <eqn>1.0</eqn>
+      </aux>
+
+      <aux name="beta">
+        <eqn>0.7</eqn>
+      </aux>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           SECTOR P: Persistent Pollution (Hill function transition)
+           ══════════════════════════════════════════════════════════════ -->
+
+      <stock name="P">
+        <doc>Persistent pollution stock (pollution_units)</doc>
+        <eqn>0</eqn>
+        <inflow>pollution_inflow</inflow>
+        <outflow>pollution_outflow</outflow>
+      </stock>
+
+      <flow name="pollution_inflow">
+        <doc>pollution_inflow = mu * industrial_output</doc>
+        <eqn>mu * industrial_output</eqn>
+      </flow>
+
+      <flow name="pollution_outflow">
+        <doc>pollution_outflow = P / tau_p</doc>
+        <eqn>P / tau_p</eqn>
+      </flow>
+
+      <aux name="pollution_fraction">
+        <doc>Hill function: P / (P + P_half)</doc>
+        <eqn>P / (P + P_half)</eqn>
+      </aux>
+
+      <aux name="pollution_efficiency">
+        <doc>pollution_efficiency = 1 - gamma * pollution_fraction</doc>
+        <eqn>1 - gamma * pollution_fraction</eqn>
+      </aux>
+
+      <aux name="mu">
+        <eqn>0.1</eqn>
+      </aux>
+
+      <aux name="tau_p">
+        <eqn>20</eqn>
+      </aux>
+
+      <aux name="P_half">
+        <eqn>500</eqn>
+      </aux>
+
+      <aux name="gamma">
+        <eqn>0.3</eqn>
+      </aux>
+
+    </variables>
+  </model>
+</xmile>

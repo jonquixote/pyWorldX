@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pyworldx.core.metadata import EquationSource, ValidationStatus, WORLD7Alignment
 from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 
@@ -98,7 +99,7 @@ class WiliamEconomySector:
             "wiliam_output": Quantity(output, "industrial_output_units"),
             "wiliam_investment": Quantity(investment, "capital_units"),
             "wiliam_military_fraction": Quantity(
-                self.military_fraction, "dimensionless"
+                military / max(output, 1e-15), "dimensionless"
             ),
         }
 
@@ -118,9 +119,9 @@ class WiliamEconomySector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "EXPERIMENTAL",
-            "equation_source": "ADAPTER_DERIVED",
-            "world7_alignment": "APPROXIMATE",
+            "validation_status": ValidationStatus.EXPERIMENTAL,
+            "equation_source": EquationSource.ADAPTER_DERIVED,
+            "world7_alignment": WORLD7Alignment.APPROXIMATE,
             "approximations": [
                 "Simplified Cobb-Douglas production function",
                 "Fixed investment and military fractions",

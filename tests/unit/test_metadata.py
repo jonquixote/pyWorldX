@@ -18,10 +18,11 @@ class TestEquationSource:
         assert EquationSource.SYNTHESIZED_FROM_PRIMARY_LITERATURE.value == (
             "synthesized_from_primary_literature"
         )
+        assert EquationSource.CANONICAL_TEST_WORLD.value == "canonical_test_world"
         assert EquationSource.PLACEHOLDER.value == "placeholder"
 
     def test_count(self) -> None:
-        assert len(EquationSource) == 6
+        assert len(EquationSource) == 7
 
 
 class TestValidationStatus:

@@ -18,6 +18,7 @@ from pyworldx.core.balance import BalanceAuditor
 from pyworldx.core.graph import DependencyGraph, build_dependency_graph
 from pyworldx.core.integrators import rk4_step
 from pyworldx.core.loops import LoopResult, resolve_algebraic_loop
+from pyworldx.core.metadata import EquationSource
 from pyworldx.core.multirate import (
     IncompatibleTimestepError,
     MultirateScheduler,
@@ -25,6 +26,13 @@ from pyworldx.core.multirate import (
 )
 from pyworldx.core.quantities import Quantity
 from pyworldx.core.result import RunResult
+from pyworldx.observability.manifest import build_manifest, finalize_manifest
+from pyworldx.observability.tracing import (
+    CausalTraceRef,
+    SnapshotRingBuffer,
+    TraceCollector,
+    TraceLevel,
+)
 from pyworldx.sectors.base import RunContext
 
 # Re-export for backward compatibility
@@ -56,6 +64,8 @@ class Engine:
         loop_max_iter: int = 100,
         balance_warn_tol: float = 1e-6,
         balance_fail_tol: float = 1e-3,
+        trace_level: str = "OFF",
+        trace_ring_buffer_size: int = 2,
     ) -> None:
         self.sectors = sectors
         self.master_dt = master_dt
@@ -63,6 +73,8 @@ class Engine:
         self.t_end = t_end
         self.loop_tol = loop_tol
         self.loop_max_iter = loop_max_iter
+        self.trace_level = TraceLevel(trace_level.lower())
+        self.trace_ring_buffer_size = trace_ring_buffer_size
 
         # Build sector lookup
         self._sectors_by_name: dict[str, Any] = {
@@ -98,6 +110,8 @@ class Engine:
 
     def run(self) -> RunResult:
         """Execute the full simulation and return structured results."""
+        manifest = build_manifest(self.sectors)
+
         ctx = RunContext(
             master_dt=self.master_dt,
             t_start=self.t_start,
@@ -151,6 +165,12 @@ class Engine:
 
         warnings_list: list[str] = []
         loop_diagnostics: list[LoopResult] = []
+
+        # ── Trace collector ──────────────────────────────────────────
+        collector = TraceCollector(
+            level=self.trace_level,
+            ring_buffer=SnapshotRingBuffer(size=self.trace_ring_buffer_size),
+        )
 
         # ── Master time loop ─────────────────────────────────────────
         t = self.t_start
@@ -257,7 +277,44 @@ class Engine:
                 dt=self.master_dt,
             )
 
-            # ── 5) Record state ──────────────────────────────────────
+            # ── 5) Trace snapshot ────────────────────────────────────
+            collector.store_snapshot(step_idx, dict(shared))
+
+            # Emit trace refs for sector outputs at FULL level
+            if self.trace_level == TraceLevel.FULL:
+                for s in self.sectors:
+                    s_stocks = {
+                        k: all_stocks[k]
+                        for k in sector_stock_names[s.name]
+                    }
+                    out = s.compute(t + self.master_dt, s_stocks, shared, ctx)
+                    meta = s.metadata()
+                    eq_src_raw = meta.get(
+                        "equation_source", "PLACEHOLDER"
+                    )
+                    if isinstance(eq_src_raw, EquationSource):
+                        eq_src = eq_src_raw
+                    else:
+                        try:
+                            eq_src = EquationSource(str(eq_src_raw).lower())
+                        except ValueError:
+                            eq_src = EquationSource.PLACEHOLDER
+                    for var_name, val in out.items():
+                        if not var_name.startswith("d_"):
+                            ref = CausalTraceRef(
+                                variable=var_name,
+                                t=t + self.master_dt,
+                                raw_value=val.magnitude,
+                                unit=val.unit,
+                                upstream_keys=s.declares_reads(),
+                                state_snapshot_ref=step_idx,
+                                equation_source=eq_src,
+                                sector=s.name,
+                                loop_resolved=False,
+                            )
+                            collector.emit(ref)
+
+            # ── 6) Record state ──────────────────────────────────────
             t += self.master_dt
             time_index.append(t)
             for name in all_stocks:
@@ -280,11 +337,15 @@ class Engine:
                 f"Balance auditor: {audit_summary['FAIL']} FAIL results"
             )
 
+        finalize_manifest(manifest)
+
         return RunResult(
             time_index=np.array(time_index),
             trajectories=result_trajectories,
             warnings=warnings_list,
             balance_audits=[r.to_dict() for r in self._auditor.results],
+            trace_ref=collector.refs if collector.refs else None,
+            provenance=manifest.to_dict(),
         )
 
     def _bootstrap_initial_state(

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from pyworldx.core.metadata import EquationSource, ValidationStatus, WORLD7Alignment
 from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
@@ -123,9 +124,9 @@ class PollutionSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "REFERENCE_MATCHED",
-            "equation_source": "MEADOWS_SPEC",
-            "world7_alignment": "NONE",
+            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "equation_source": EquationSource.MEADOWS_SPEC,
+            "world7_alignment": WORLD7Alignment.NONE,
             "approximations": ["simplified absorption table"],
             "free_parameters": [
                 "initial_ppol",

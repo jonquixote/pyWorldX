@@ -17,6 +17,7 @@ class EquationSource(Enum):
     EMPIRICAL_FIT = "empirical_fit"
     ADAPTER_DERIVED = "adapter_derived"
     SYNTHESIZED_FROM_PRIMARY_LITERATURE = "synthesized_from_primary_literature"
+    CANONICAL_TEST_WORLD = "canonical_test_world"
     PLACEHOLDER = "placeholder"
 
 

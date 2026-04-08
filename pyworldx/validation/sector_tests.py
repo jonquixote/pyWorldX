@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pyworldx.core.quantities import Quantity
-from pyworldx.sectors.base import BaseSector, RunContext
+from pyworldx.sectors.base import RunContext
 
 
 @dataclass

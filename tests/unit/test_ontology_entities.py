@@ -6,7 +6,6 @@ from pyworldx.ontology.entities import (
     AggregationSemantic,
     CANONICAL_ENTITIES,
     Dimension,
-    OntologyEntity,
 )
 
 

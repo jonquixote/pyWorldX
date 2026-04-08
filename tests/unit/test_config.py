@@ -11,7 +11,6 @@ from pyworldx.config.calibration_config import (
 )
 from pyworldx.config.ensemble_config import (
     DistributionType,
-    EnsembleSpec,
     ParameterDistribution,
     ThresholdQuery,
     UncertaintyType,

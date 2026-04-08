@@ -18,6 +18,7 @@ loops in other sectors through technology multipliers.
 
 from __future__ import annotations
 
+from pyworldx.core.metadata import EquationSource, ValidationStatus, WORLD7Alignment
 from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
@@ -79,7 +80,7 @@ class AdaptiveTechnologySector:
     ) -> dict[str, Quantity]:
         tech = stocks["TECH"].magnitude
 
-        io = inputs.get(
+        _io = inputs.get(
             "industrial_output", Quantity(0.0, "industrial_output_units")
         ).magnitude
         nr_frac = inputs.get(
@@ -156,9 +157,9 @@ class AdaptiveTechnologySector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "REFERENCE_MATCHED",
-            "equation_source": "MEADOWS_SPEC",
-            "world7_alignment": "NONE",
+            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "equation_source": EquationSource.MEADOWS_SPEC,
+            "world7_alignment": WORLD7Alignment.NONE,
             "approximations": [
                 "Aggregated technology index",
                 "Fixed implementation delay",

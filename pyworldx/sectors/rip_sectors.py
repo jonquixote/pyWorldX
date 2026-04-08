@@ -11,6 +11,7 @@ Sector P: single-rate, coupled to I via algebraic loop
 
 from __future__ import annotations
 
+from pyworldx.core.metadata import EquationSource, ValidationStatus, WORLD7Alignment
 from pyworldx.core.quantities import (
     CAPITAL_UNITS,
     DIMENSIONLESS,
@@ -80,9 +81,9 @@ class ResourceSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "reference_matched",
-            "equation_source": "canonical_test_world",
-            "world7_alignment": "none",
+            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "equation_source": EquationSource.CANONICAL_TEST_WORLD,
+            "world7_alignment": WORLD7Alignment.NONE,
             "approximations": [],
             "free_parameters": {"k_ext": K_EXT},
             "conservation_groups": ["nonrenewable_resource_mass"],
@@ -157,9 +158,9 @@ class IndustrySector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "reference_matched",
-            "equation_source": "canonical_test_world",
-            "world7_alignment": "none",
+            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "equation_source": EquationSource.CANONICAL_TEST_WORLD,
+            "world7_alignment": WORLD7Alignment.NONE,
             "approximations": ["capital_productivity_factor is linear passthrough"],
             "free_parameters": {
                 "alpha": ALPHA, "delta": DELTA, "A": A, "beta": BETA,
@@ -234,9 +235,9 @@ class PollutionSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": "reference_matched",
-            "equation_source": "canonical_test_world",
-            "world7_alignment": "none",
+            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "equation_source": EquationSource.CANONICAL_TEST_WORLD,
+            "world7_alignment": WORLD7Alignment.NONE,
             "approximations": [],
             "free_parameters": {
                 "mu": MU, "tau_p": TAU_P, "P_half": P_HALF, "gamma": GAMMA,
