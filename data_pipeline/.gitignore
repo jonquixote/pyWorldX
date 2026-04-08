@@ -1,0 +1,16 @@
+# Data pipeline gitignore
+# Track all code, ignore only secrets and data artifacts
+
+# Secrets
+.env
+
+# Data stores (parquet files, sqlite db)
+data/
+
+# HTTP cache
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
