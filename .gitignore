@@ -1,4 +1,10 @@
 # pyWorldX gitignore
+
+# Secrets — NEVER commit
+.env
+*.env
+data_pipeline/.env
+
 # Data pipeline — track all code, ignore only data and caches
 data_pipeline/data/
 data_pipeline/.cache/

@@ -33,11 +33,5 @@ jobs:
       - name: Type check (mypy)
         run: poetry run mypy pyworldx/ --ignore-missing-imports
 
-      - name: Unit tests
-        run: poetry run pytest tests/unit/ -v --tb=short
-
-      - name: Sector validation tests
-        run: poetry run pytest tests/validation/ -v --tb=short
-
-      - name: Canonical integration tests
-        run: poetry run pytest tests/canonical/ -v --tb=short
+      - name: Run tests
+        run: poetry run pytest tests/ -v --tb=short --ignore=tests/validation
