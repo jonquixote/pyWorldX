@@ -3,12 +3,14 @@
 # Secrets — NEVER commit
 .env
 *.env
-data_pipeline/.env
 
-# Data pipeline — track all code, ignore only data and caches
+# Data pipeline — track all code, ignore data artifacts and caches
 data_pipeline/data/
 data_pipeline/.cache/
-data_pipeline/__pycache__/
+
+# Internal dev notes (keep local, not user-facing)
+data_pipeline/STATUS_REPORT.md
+data_pipeline/data_pipeline_analysis.md
 
 # Python
 __pycache__/

@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  core:
+    name: Core Engine
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,3 +36,30 @@ jobs:
 
       - name: Run tests
         run: poetry run pytest tests/ -v --tb=short --ignore=tests/validation
+
+  pipeline:
+    name: Data Pipeline
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (with pipeline extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install --extras pipeline
+
+      - name: Lint pipeline (ruff)
+        run: poetry run ruff check data_pipeline/
+
+      - name: Run pipeline tests (offline only)
+        run: poetry run pytest data_pipeline/tests/ -v --tb=short -m "not network"

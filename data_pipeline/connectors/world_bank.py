@@ -31,6 +31,7 @@ INDICATORS = {
     "gdp_current_usd": "NY.GDP.MKTP.CD",
     "gni_per_capita": "NY.GNP.PCAP.CD",
     "gdp_deflator": "NY.GDP.DEFL.KD.ZG",
+    "services_value_added": "NV.SRV.TOTL.KD",  # Services, value added (constant 2015 US$)
 }
 
 BASE_URL = "https://api.worldbank.org/v2/country/all/indicator"
@@ -73,7 +74,7 @@ def fetch_indicator(
             ttl_days=config.cache_ttl_days,
             headers=headers,
             params=params,
-            timeout=config.request_timeout_seconds,
+            timeout=max(config.request_timeout_seconds, 120),  # World Bank API is slow
         )
     except requests.RequestException as e:
         duration = time.time() - t0

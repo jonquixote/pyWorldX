@@ -48,6 +48,9 @@ def write_aligned(
 ) -> Path:
     """Write a DataFrame to the aligned Parquet store.
 
+    If the entity file already exists, merges with existing data
+    (deduplicating on source_id + year).
+
     Args:
         df: DataFrame with aligned store columns.
         entity: pyWorldX ontology entity name.
@@ -60,6 +63,22 @@ def write_aligned(
     # Sanitize entity name for filename
     safe_name = entity.replace(".", "_")
     path = aligned_dir / f"{safe_name}.parquet"
+
+    # Merge with existing data if file exists
+    if path.exists():
+        try:
+            existing = pd.read_parquet(path)
+            combined = pd.concat([existing, df], ignore_index=True)
+            # Deduplicate on source_id + year (keep latest by source_id)
+            if "source_id" in combined.columns and "year" in combined.columns:
+                combined = combined.drop_duplicates(
+                    subset=["source_id", "year"],
+                    keep="last",
+                )
+            df = combined
+        except Exception:
+            pass  # If merge fails, just overwrite
+
     df.to_parquet(path, index=False, engine="pyarrow")
     return path
 
