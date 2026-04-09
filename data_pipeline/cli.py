@@ -9,7 +9,7 @@ import numpy as np
 import typer
 
 from data_pipeline.config import PipelineConfig
-from data_pipeline.storage.cache import clear_cache, cache_status
+from data_pipeline.storage.cache import clear_cache
 from data_pipeline.storage.metadata_db import init_db, list_all_sources
 from data_pipeline.storage.parquet_store import list_sources, list_entities
 
@@ -203,11 +203,11 @@ def run(
     typer.echo("\n[3/5] Generating quality report...")
     from data_pipeline.quality.report import generate_report
 
-    report = generate_report(
+    generate_report(
         config,
         output_path=config.raw_dir.parent / "quality_report.md",
     )
-    typer.echo(f"  ✅ Quality report written.")
+    typer.echo("  ✅ Quality report written.")
 
     # ── Step 4: Export Calibration CSVs ──────────────────────────
     typer.echo("\n[4/5] Exporting calibration CSVs...")
@@ -255,7 +255,6 @@ def init_conditions(
     typer.echo("=" * 60)
 
     from data_pipeline.alignment.initial_conditions import (
-        extract_initial_conditions,
         extract_sector_initial_conditions,
         report_initial_conditions,
     )
@@ -357,7 +356,7 @@ def transform(
             for p in paths:
                 typer.echo(f"    ✅ → {p.name}")
         else:
-            typer.echo(f"    ❌ No output (check mappings or data)")
+            typer.echo("    ❌ No output (check mappings or data)")
 
 
 @app.command()
@@ -372,7 +371,6 @@ def validate():
 
     from data_pipeline.quality.coverage import compute_coverage
     from data_pipeline.quality.freshness import compute_freshness
-    from data_pipeline.quality.consistency import check_flow_consistency
 
     # Coverage check
     typer.echo("\n[1/3] Coverage Check")
@@ -470,7 +468,7 @@ def cross_check():
         df_b = _load_aligned_entity(entity, source_b)
 
         if df_a is None or df_b is None or df_a.empty or df_b.empty:
-            typer.echo(f"  ⚠️ One or both sources not available")
+            typer.echo("  ⚠️ One or both sources not available")
             continue
 
         # Merge on year
@@ -530,7 +528,7 @@ def diff(
 
     # Merge
     merged = df_a.merge(df_b, on="year", suffixes=("_a", "_b"), how="outer", indicator=True)
-    typer.echo(f"\nOverlap:")
+    typer.echo("\nOverlap:")
     typer.echo(f"  Common years: {len(merged[merged['_merge'] == 'both'])}")
     typer.echo(f"  Only in A: {len(merged[merged['_merge'] == 'left_only'])}")
     typer.echo(f"  Only in B: {len(merged[merged['_merge'] == 'right_only'])}")

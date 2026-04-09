@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 from data_pipeline.transforms.normalize import (
-    NORMALIZER_REGISTRY,
     normalize_fred,
     normalize_world_bank,
     normalize_source,

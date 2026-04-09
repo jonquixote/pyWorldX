@@ -9,7 +9,7 @@ The normalized data can then be processed by the transform chain.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 import pandas as pd
 

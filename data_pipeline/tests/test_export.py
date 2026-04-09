@@ -6,9 +6,7 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
-from data_pipeline.config import PipelineConfig
 from data_pipeline.storage.parquet_store import write_aligned
 
 

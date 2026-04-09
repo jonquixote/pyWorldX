@@ -8,7 +8,6 @@ Coverage: 1880-present, global and zonal means.
 
 from __future__ import annotations
 
-import io
 import time
 from datetime import datetime, timezone
 
@@ -56,8 +55,6 @@ def fetch_nasa_giss(
     lines = content.decode("utf-8", errors="replace").split("\n")
 
     # Skip header lines (first 7 lines), then data lines until blank line
-    col_names = ["year", "jan", "feb", "mar", "apr", "may", "jun",
-                  "jul", "aug", "sep", "oct", "nov", "dec", "annual"]
     records = []
     for line in lines[7:]:
         line = line.strip()
@@ -81,7 +78,7 @@ def fetch_nasa_giss(
     records_count = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

@@ -10,7 +10,7 @@ import pandas as pd
 from data_pipeline.config import PipelineConfig
 from data_pipeline.quality.coverage import compute_coverage
 from data_pipeline.quality.freshness import compute_freshness
-from data_pipeline.storage.parquet_store import list_sources, list_entities
+from data_pipeline.storage.parquet_store import list_sources
 
 
 def generate_report(

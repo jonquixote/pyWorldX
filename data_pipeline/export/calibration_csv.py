@@ -70,7 +70,7 @@ def export_calibration_csv(
 
     # Write with header comment
     header_lines = [
-        f"# pyWorldX NRMSD Calibration Series",
+        "# pyWorldX NRMSD Calibration Series",
         f"# Entity: {entity}",
         f"# Unit: {unit}",
         f"# Sources: {sources or 'unknown'}",

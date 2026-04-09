@@ -8,7 +8,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from data_pipeline.storage.parquet_store import read_raw, list_sources
+from data_pipeline.storage.parquet_store import read_raw
 
 
 def check_flow_consistency(

@@ -18,7 +18,6 @@ import requests
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult
-from data_pipeline.storage.cache import fetch_with_cache
 from data_pipeline.storage.metadata_db import init_db, record_fetch, record_source_version
 from data_pipeline.storage.parquet_store import write_raw
 
@@ -87,8 +86,6 @@ def fetch_fred_series(
         r = requests.get(BASE_URL, params=params, timeout=config.request_timeout_seconds)
         r.raise_for_status()
         data = r.json()
-        sha = ""
-        cache_hit = False
     except requests.RequestException as e:
         duration = time.time() - t0
         record_fetch(
@@ -122,7 +119,7 @@ def fetch_fred_series(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     # Record in metadata DB
     init_db(config.metadata_db)

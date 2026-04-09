@@ -18,8 +18,6 @@ import io
 import time
 import zipfile
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -135,7 +133,7 @@ def fetch_ceds_pollutant(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     # Record in metadata DB
     init_db(config.metadata_db)
@@ -164,7 +162,7 @@ def fetch_all(config: PipelineConfig) -> list[FetchResult]:
     Downloads the ZIP once and extracts each pollutant CSV.
     """
     # Download ZIP once
-    t0 = time.time()
+    time.time()
     try:
         content, sha, cache_hit = fetch_with_cache(
             url=URL,
@@ -206,7 +204,7 @@ def fetch_all(config: PipelineConfig) -> list[FetchResult]:
             df["unit"] = "kt"
             records = len(df)
 
-            raw_path = write_raw(df, source_id, config.raw_dir)
+            write_raw(df, source_id, config.raw_dir)
 
             init_db(config.metadata_db)
             record_source_version(

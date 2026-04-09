@@ -58,7 +58,6 @@ class TestTransformCommand:
     def test_transform_existing_source(self, temp_pipeline_dir, monkeypatch):
         """Should transform a raw source to aligned output."""
         # Set environment to use temp directories
-        import os
         monkeypatch.setenv("DATA_PIPELINE_RAW_DIR", str(temp_pipeline_dir / "raw"))
         monkeypatch.setenv("DATA_PIPELINE_ALIGNED_DIR", str(temp_pipeline_dir / "aligned"))
         monkeypatch.setenv("DATA_PIPELINE_CACHE_DIR", str(temp_pipeline_dir / "cache"))
@@ -77,7 +76,6 @@ class TestLsRawCommand:
     
     def test_ls_raw_lists_sources(self, temp_pipeline_dir, monkeypatch):
         """Should list raw sources in the store."""
-        import os
         monkeypatch.setenv("DATA_PIPELINE_RAW_DIR", str(temp_pipeline_dir / "raw"))
         monkeypatch.setenv("DATA_PIPELINE_ALIGNED_DIR", str(temp_pipeline_dir / "aligned"))
         monkeypatch.setenv("DATA_PIPELINE_CACHE_DIR", str(temp_pipeline_dir / "cache"))
@@ -94,7 +92,6 @@ class TestLsAlignedCommand:
     
     def test_ls_aligned_lists_entities(self, temp_pipeline_dir, monkeypatch):
         """Should list aligned entities in the store."""
-        import os
         monkeypatch.setenv("DATA_PIPELINE_RAW_DIR", str(temp_pipeline_dir / "raw"))
         monkeypatch.setenv("DATA_PIPELINE_ALIGNED_DIR", str(temp_pipeline_dir / "aligned"))
         monkeypatch.setenv("DATA_PIPELINE_CACHE_DIR", str(temp_pipeline_dir / "cache"))
@@ -111,7 +108,6 @@ class TestDiffCommand:
     
     def test_diff_two_aligned_datasets(self, temp_pipeline_dir, monkeypatch):
         """Should compare two aligned datasets."""
-        import os
         monkeypatch.setenv("DATA_PIPELINE_RAW_DIR", str(temp_pipeline_dir / "raw"))
         monkeypatch.setenv("DATA_PIPELINE_ALIGNED_DIR", str(temp_pipeline_dir / "aligned"))
         monkeypatch.setenv("DATA_PIPELINE_CACHE_DIR", str(temp_pipeline_dir / "cache"))
@@ -142,7 +138,6 @@ class TestInitConditionsCommand:
     
     def test_init_conditions_shows_report(self, temp_pipeline_dir, monkeypatch):
         """Should display initial conditions report."""
-        import os
         monkeypatch.setenv("DATA_PIPELINE_RAW_DIR", str(temp_pipeline_dir / "raw"))
         monkeypatch.setenv("DATA_PIPELINE_ALIGNED_DIR", str(temp_pipeline_dir / "aligned"))
         monkeypatch.setenv("DATA_PIPELINE_CACHE_DIR", str(temp_pipeline_dir / "cache"))

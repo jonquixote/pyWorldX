@@ -10,8 +10,6 @@ import pytest
 from typer.testing import CliRunner
 
 from data_pipeline.cli import app
-from data_pipeline.config import PipelineConfig
-from data_pipeline.storage.metadata_db import init_db
 from data_pipeline.storage.parquet_store import write_raw, write_aligned
 
 runner = CliRunner()

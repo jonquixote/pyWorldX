@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -88,7 +87,7 @@ def fetch_undp_hdr(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     # Record in metadata DB
     init_db(config.metadata_db)

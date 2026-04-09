@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from data_pipeline.alignment.map import EntityMapping, TransformSpec
+from data_pipeline.alignment.map import EntityMapping
 from data_pipeline.transforms.chain import (
     TRANSFORM_REGISTRY,
     transform_aggregate_world,

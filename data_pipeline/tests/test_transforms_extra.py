@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from data_pipeline.transforms.outlier_detection import detect_outliers_zscore, detect_outliers_iqr, detect_sudden_changes
 

@@ -96,7 +96,7 @@ def fetch_primap(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     # Record in metadata DB
     init_db(config.metadata_db)

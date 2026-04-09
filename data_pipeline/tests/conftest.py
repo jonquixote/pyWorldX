@@ -1,6 +1,5 @@
 """Pytest configuration and markers for data_pipeline tests."""
 
-import pytest
 
 
 def pytest_configure(config):

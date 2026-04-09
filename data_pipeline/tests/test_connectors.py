@@ -5,12 +5,11 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.storage.metadata_db import init_db
-from data_pipeline.storage.parquet_store import write_raw, read_raw
+from data_pipeline.storage.parquet_store import read_raw
 
 
 def make_config(tmpdir):

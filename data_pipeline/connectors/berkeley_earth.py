@@ -92,7 +92,7 @@ def fetch_berkeley_earth(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

@@ -77,7 +77,7 @@ def fetch_footprint_network(
     df["source_variable"] = "ecological_footprint"
     records_count = len(df)
 
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

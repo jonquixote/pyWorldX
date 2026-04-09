@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from data_pipeline.storage.parquet_store import read_raw, read_aligned
+from data_pipeline.storage.parquet_store import read_aligned
 
 
 # ── Unit Bridge ───────────────────────────────────────────────────

@@ -9,7 +9,6 @@ from typing import Optional
 
 import requests
 
-from data_pipeline.config import PipelineConfig
 
 
 def content_hash(response: requests.Response) -> str:

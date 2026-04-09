@@ -9,7 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
-import pandas as pd
 
 from data_pipeline.storage.parquet_store import read_aligned
 
@@ -229,7 +228,7 @@ def report_initial_conditions(
     
     lines = [
         f"# Initial Conditions Report — Target Year: {target_year}",
-        f"# Generated from aligned data store",
+        "# Generated from aligned data store",
         "",
     ]
     

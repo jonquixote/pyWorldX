@@ -9,11 +9,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from data_pipeline.config import PipelineConfig
 from data_pipeline.storage.metadata_db import init_db
-from data_pipeline.storage.parquet_store import write_raw, read_raw, list_sources
+from data_pipeline.storage.parquet_store import write_raw
 from data_pipeline.transforms.chain import run_transform_chain, run_all_transforms
-from data_pipeline.transforms.normalize import normalize_source
 from data_pipeline.alignment.initial_conditions import extract_initial_conditions
 from data_pipeline.calibration.nrmsd import nrmsd_direct
 
@@ -173,7 +171,7 @@ class TestEndToEndPipeline:
         
         # Some should use defaults (no 1900 data available)
         defaults = [c for c in conditions.values() if c["source"] == "default"]
-        aligned = [c for c in conditions.values() if c["source"] == "aligned"]
+        [c for c in conditions.values() if c["source"] == "aligned"]
         
         # At least some should use defaults
         assert len(defaults) > 0

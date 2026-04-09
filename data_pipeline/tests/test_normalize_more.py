@@ -8,8 +8,6 @@ import pytest
 from data_pipeline.transforms.normalize import (
     normalize_oecd,
     normalize_owid,
-    OECD_COUNTRY_CODES,
-    OECD_TIME_BASE,
 )
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
 
 from data_pipeline.transforms.reshape import melt_wide_to_long, standardize_columns, filter_by_year
 from data_pipeline.transforms.interpolation import interpolate_annual, fill_gaps

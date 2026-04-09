@@ -14,7 +14,6 @@ import io
 import time
 import zipfile
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -76,7 +75,6 @@ def fetch_edgar(
             csv_files = [n for n in zf.namelist() if n.endswith('.csv')]
             
             if excel_files:
-                import openpyxl
                 with zf.open(excel_files[0]) as excel_file:
                     df = pd.read_excel(io.BytesIO(excel_file.read()))
             elif csv_files:
@@ -100,7 +98,7 @@ def fetch_edgar(
     df["source_variable"] = gas
     records = len(df)
 
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

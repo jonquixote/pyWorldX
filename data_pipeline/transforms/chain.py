@@ -318,7 +318,7 @@ def run_transform_chain(
                 result_df = transform_fn(result_df, mapping, **t_kwargs)
             except Exception as e:
                 # Record failure and skip this entity
-                duration = time.time() - t0
+                time.time() - t0
                 record_transform(
                     db_path,
                     transform_name=f"{t_name}:{entity}",
@@ -341,7 +341,7 @@ def run_transform_chain(
                     written_paths.append(path)
                     
                     # Record success
-                    duration = time.time() - t0
+                    time.time() - t0
                     record_transform(
                         db_path,
                         transform_name=f"chain:{source_id}",

@@ -14,14 +14,12 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult
-from data_pipeline.storage.cache import fetch_with_cache
 from data_pipeline.storage.metadata_db import init_db, record_fetch, record_source_version
 from data_pipeline.storage.parquet_store import write_raw
 
@@ -99,7 +97,7 @@ def fetch_gapminder(
     df = df.dropna(subset=["year", "value"])
 
     records_count = len(df)
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

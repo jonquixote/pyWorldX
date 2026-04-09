@@ -87,7 +87,7 @@ def fetch_usgs(
     })
 
     records = len(df)
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(
@@ -116,8 +116,8 @@ def fetch_usgs(
                 proxy_df["unit"] = "resource_units"
                 if "country" in proxy_df.columns:
                     proxy_df = proxy_df.rename(columns={"country": "country_code"})
-                proxy_records = len(proxy_df)
-                proxy_path = write_raw(proxy_df, "usgs_nonrenewable_proxy", config.raw_dir)
+                len(proxy_df)
+                write_raw(proxy_df, "usgs_nonrenewable_proxy", config.raw_dir)
     except Exception:
         pass  # Proxy is optional
 

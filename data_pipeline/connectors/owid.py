@@ -15,14 +15,12 @@ from __future__ import annotations
 import io
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult
-from data_pipeline.storage.cache import fetch_with_cache
 from data_pipeline.storage.metadata_db import init_db, record_fetch, record_source_version
 from data_pipeline.storage.parquet_store import write_raw
 
@@ -120,7 +118,7 @@ def fetch_owid_search(
         df["source_variable"] = search_key
         records = len(df)
         
-        raw_path = write_raw(df, source_id, config.raw_dir)
+        write_raw(df, source_id, config.raw_dir)
         init_db(config.metadata_db)
         record_source_version(
             config.metadata_db, "owid", f"search_{search_key}",
@@ -177,7 +175,7 @@ def fetch_owid_search(
             data_df["original_column"] = column_name
         
         records = len(data_df)
-        raw_path = write_raw(data_df, source_id, config.raw_dir)
+        write_raw(data_df, source_id, config.raw_dir)
         
         init_db(config.metadata_db)
         record_source_version(
@@ -197,7 +195,7 @@ def fetch_owid_search(
             records_fetched=records,
         )
         
-    except (requests.RequestException, Exception) as e:
+    except (requests.RequestException, Exception):
         duration = time.time() - t0
         # Fall back to search metadata
         df = pd.DataFrame(results)
@@ -205,7 +203,7 @@ def fetch_owid_search(
         df["source_variable"] = search_key
         records = len(df)
         
-        raw_path = write_raw(df, source_id, config.raw_dir)
+        write_raw(df, source_id, config.raw_dir)
         init_db(config.metadata_db)
         record_source_version(
             config.metadata_db, "owid", f"search_{search_key}",
@@ -309,7 +307,7 @@ def fetch_owid_indicator(
     df["source_variable"] = indicator_key
     records_count = len(df)
 
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(

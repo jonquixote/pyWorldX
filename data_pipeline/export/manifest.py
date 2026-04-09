@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 
 from data_pipeline.storage.metadata_db import list_all_sources
 from data_pipeline.storage.parquet_store import list_sources, list_entities

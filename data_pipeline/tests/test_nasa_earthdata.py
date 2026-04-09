@@ -5,15 +5,12 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pandas as pd
-import pytest
 
 from data_pipeline.connectors.nasa_earthdata import (
     DATASETS,
     fetch_nasa_earthdata,
 )
 from data_pipeline.config import PipelineConfig
-from data_pipeline.storage.parquet_store import write_raw
 
 
 class TestNasaEarthdataDatasets:

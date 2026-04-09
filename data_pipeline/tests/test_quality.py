@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.storage.metadata_db import init_db
@@ -106,7 +105,7 @@ class TestReport:
             output_path = tmpdir / "quality_report.md"
             
             from data_pipeline.quality.report import generate_report
-            report = generate_report(config, output_path=output_path)
+            generate_report(config, output_path=output_path)
             
             assert output_path.exists()
             content = output_path.read_text()

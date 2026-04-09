@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 import requests
@@ -62,8 +61,6 @@ def _parse_oecd_sdmx_json(data: dict) -> pd.DataFrame:
     # Build value lookup for each dimension
     # Values are stored in a nested structure under "series" key
     # For SNA_TABLE4, we need REF_AREA (country), TIME_PERIOD (year), OBS_VALUE
-    dim_id_to_idx = {}
-    dim_id_to_values = {}
     
     # Get the codelists from the data structure
     # OECD SDMX-JSON v2.0 uses 'links' and 'annotations' for metadata
@@ -179,7 +176,7 @@ def fetch_oecd(
     records = len(df)
 
     # Write to raw store
-    raw_path = write_raw(df, source_id, config.raw_dir)
+    write_raw(df, source_id, config.raw_dir)
 
     init_db(config.metadata_db)
     record_source_version(
