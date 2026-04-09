@@ -38,6 +38,23 @@ class PipelineConfig(BaseModel):
             data["eia_api_key"] = os.environ.get("EIA_API_KEY")
         if not data.get("faostat_token"):
             data["faostat_token"] = os.environ.get("FAOSTAT_TOKEN")
+        # Path overrides from env vars (for CI/testing)
+        if not data.get("raw_dir"):
+            env_raw = os.environ.get("DATA_PIPELINE_RAW_DIR")
+            if env_raw:
+                data["raw_dir"] = Path(env_raw)
+        if not data.get("aligned_dir"):
+            env_aligned = os.environ.get("DATA_PIPELINE_ALIGNED_DIR")
+            if env_aligned:
+                data["aligned_dir"] = Path(env_aligned)
+        if not data.get("cache_dir"):
+            env_cache = os.environ.get("DATA_PIPELINE_CACHE_DIR")
+            if env_cache:
+                data["cache_dir"] = Path(env_cache)
+        if not data.get("metadata_db"):
+            env_db = os.environ.get("DATA_PIPELINE_METADATA_DB")
+            if env_db:
+                data["metadata_db"] = Path(env_db)
         super().__init__(**data)
 
     # Cache settings

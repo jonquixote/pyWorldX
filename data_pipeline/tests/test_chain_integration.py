@@ -82,7 +82,7 @@ class TestTransformChainIntegration:
     def test_primap_through_chain(self, temp_pipeline):
         """PRIMAP wide format should be melted and aggregated."""
         raw_dir, aligned_dir, db_path = temp_pipeline
-        
+
         # Create PRIMAP-style wide data
         df = pd.DataFrame({
             "area_(iso3)": ["EARTH", "EARTH"],
@@ -93,12 +93,16 @@ class TestTransformChainIntegration:
             "source_variable": ["ghg_emissions_multi_gas"] * 2,
         })
         df.to_parquet(raw_dir / "primap_hist.parquet", index=False)
-        
-        # Run transform chain
+
+        # Run transform chain — PRIMAP now produces 2 entities (CO2 and CH4)
+        # since duplicate key fix in ONTOLOGY_MAP
         paths = run_transform_chain("primap_hist", raw_dir, aligned_dir, db_path)
-        
-        assert len(paths) == 1
-        result = pd.read_parquet(paths[0])
+
+        assert len(paths) == 2  # emissions_co2_fossil + emissions_ch4
+        # Find the CO2 file
+        co2_paths = [p for p in paths if "co2_fossil" in p.name]
+        assert len(co2_paths) == 1
+        result = pd.read_parquet(co2_paths[0])
         assert len(result) == 2  # 2 years
         assert result[result["year"] == 1990]["value"].iloc[0] == pytest.approx(1.5)  # kt → Mt
     
