@@ -111,6 +111,48 @@ class Scenario:
                 )
         return result
 
+    @classmethod
+    def from_preset(
+        cls,
+        preset_name: str,
+        name: str | None = None,
+        start_year: int = 1900,
+        end_year: int = 2100,
+        extra_overrides: dict[str, float] | None = None,
+        policy_events: list[PolicyEvent] | None = None,
+        tags: list[str] | None = None,
+    ) -> "Scenario":
+        """Create a Scenario from a ModelPreset.
+
+        Merges the preset's parameter overrides with any extra_overrides.
+        Extra overrides take precedence over the preset.
+
+        Args:
+            preset_name: Name of the preset (e.g., "world3_03", "nebel_2024")
+            name: Scenario name (defaults to preset name)
+            start_year: Simulation start year
+            end_year: Simulation end year
+            extra_overrides: Additional parameter overrides on top of preset
+            policy_events: Policy events to apply
+            tags: Scenario tags
+        """
+        from pyworldx.presets import get_preset
+
+        preset = get_preset(preset_name)
+        overrides = dict(preset.parameter_overrides)
+        if extra_overrides:
+            overrides.update(extra_overrides)
+
+        return cls(
+            name=name or f"{preset.name}_scenario",
+            description=f"Scenario from preset: {preset.description}",
+            start_year=start_year,
+            end_year=end_year,
+            parameter_overrides=overrides,
+            policy_events=policy_events or [],
+            tags=tags or [preset.name],
+        )
+
 
 # ── Built-in scenarios (Section 11.3) ────────────────────────────────
 

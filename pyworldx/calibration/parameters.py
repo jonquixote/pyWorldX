@@ -328,11 +328,11 @@ def build_world3_parameter_registry() -> ParameterRegistry:
     reg.register(ParameterEntry(
         name="pollution.pptd",
         default=20.0,
-        bounds=(10.0, 40.0),
+        bounds=(10.0, 150.0),
         units="years",
         sector_owner="pollution",
-        rationale="W3-03 PPTD = 20 years (pollution transmission delay)",
-        empirical_anchor="wrld3-03.mdl",
+        rationale="W3-03 PPTD = 20 years; Nebel 2024 recalibrated to 111.8",
+        empirical_anchor="wrld3-03.mdl; Nebel et al. 2024 (DOI: 10.1111/jiec.13442)",
     ))
 
     return reg
