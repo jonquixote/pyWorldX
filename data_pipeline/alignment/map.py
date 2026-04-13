@@ -1365,6 +1365,98 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
             world_area_name="World",
         ),
     ],
+
+    # ── World3-03 Reference Trajectories ─────────────────────────
+    # Canonical Standard Run reference data (embedded, not fetched).
+    # Used for Layer 1 structural validation.
+    "world3_reference_population": [
+        EntityMapping(
+            entity="population.total",
+            year_col="year",
+            value_col="value",
+            unit="persons",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_industrial_output": [
+        EntityMapping(
+            entity="gdp.current_usd",
+            year_col="year",
+            value_col="value",
+            unit="industrial_output_units",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_food_per_capita": [
+        EntityMapping(
+            entity="food.supply.kcal_per_capita",
+            year_col="year",
+            value_col="value",
+            unit="veg_equiv_kg_per_person_yr",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_nr_fraction_remaining": [
+        EntityMapping(
+            entity="resources.nonrenewable_stock",
+            year_col="year",
+            value_col="value",
+            unit="dimensionless",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_pollution_index": [
+        EntityMapping(
+            entity="atmospheric.co2",
+            year_col="year",
+            value_col="value",
+            unit="dimensionless",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_life_expectancy": [
+        EntityMapping(
+            entity="welfare.life_expectancy",
+            year_col="year",
+            value_col="value",
+            unit="years",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_human_welfare_index": [
+        EntityMapping(
+            entity="hdi.human_development_index",
+            year_col="year",
+            value_col="value",
+            unit="dimensionless",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
+    "world3_reference_ecological_footprint": [
+        EntityMapping(
+            entity="welfare.ecological_footprint",
+            year_col="year",
+            value_col="value",
+            unit="dimensionless",
+            transforms=[],
+            country_filter=None,
+            quality_flag="REFERENCE",
+        ),
+    ],
 }
 
 
