@@ -50,6 +50,10 @@ ENTITY_TO_ENGINE_MAP: dict[str, str] = {
 
     # Resources (indirect proxies)
     "resources.nonrenewable_stock": "NR",
+
+    # USGS Layer 3 cross-validation proxies
+    "resources.extraction_index": "resource_extraction_index",
+    "resources.depletion_ratio": "reserve_depletion_ratio",
 }
 
 # NRMSD comparison method per variable (from Nebel 2023 conventions).
@@ -69,6 +73,9 @@ NRMSD_METHOD: dict[str, str] = {
     "service_output_per_capita": "change_rate",
     "ecological_footprint": "direct",
     "PPOL": "change_rate",
+    # USGS Layer 3 proxies
+    "resource_extraction_index": "change_rate",
+    "reserve_depletion_ratio": "change_rate",
 }
 
 

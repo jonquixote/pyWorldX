@@ -8,8 +8,6 @@ Three-layer calibration stack:
   Layer 1: W3-03 reference trajectories (structural correctness)
   Layer 2: Empirical data from 37 pipeline connectors (real-world fit)
   Layer 3: USGS mineral data (resource cross-validation)
-
-This module implements Layers 1 and 2. Layer 3 is in the USGS connector.
 """
 
 from __future__ import annotations
@@ -43,6 +41,10 @@ class EmpiricalCalibrationReport:
     empirical_result: Optional[BridgeResult] = None
     pipeline_report: Optional[PipelineReport] = None
 
+    # Layer 3: USGS cross-validation
+    usgs_targets_loaded: int = 0
+    usgs_result: Optional[BridgeResult] = None
+
     # Summary
     calibrated_parameters: dict[str, float] = field(default_factory=dict)
     converged: bool = False
@@ -60,6 +62,7 @@ class EmpiricalCalibrationRunner:
         self,
         aligned_dir: Path,
         reference_connector: Optional[Any] = None,
+        usgs_data_dir: Optional[Path] = None,
         reference_year: int = 1970,
         normalize: bool = True,
         entity_map: Optional[dict[str, str]] = None,
@@ -69,12 +72,15 @@ class EmpiricalCalibrationRunner:
         Args:
             aligned_dir: Path to data_pipeline/data/aligned/
             reference_connector: Optional World3ReferenceConnector for Layer 1
+            usgs_data_dir: Path to USGS data directory for Layer 3.
+                Defaults to data_pipeline/data/usgs/
             reference_year: Base year for normalization (default 1970)
             normalize: Whether to normalize trajectories
             entity_map: Override for ENTITY_TO_ENGINE_MAP
         """
         self.aligned_dir = aligned_dir
         self.reference_connector = reference_connector
+        self.usgs_data_dir = usgs_data_dir
         self.bridge = DataBridge(
             reference_year=reference_year,
             normalize=normalize,
@@ -141,6 +147,92 @@ class EmpiricalCalibrationRunner:
             return None
 
         return self.bridge.compare(ref_targets, trajectories, time_index)
+
+    def load_usgs_targets(
+        self,
+        weight: float = 0.5,
+    ) -> list[CalibrationTarget]:
+        """Load USGS resource proxy targets (Layer 3).
+
+        Computes aggregate extraction index and depletion ratio from
+        USGS world production data for cross-validation against the
+        engine's resource sector.
+
+        Args:
+            weight: Weight for USGS targets in composite NRMSD.
+                Default 0.5 (lower than empirical data, since these
+                are proxy comparisons, not direct measurements).
+
+        Returns:
+            List of CalibrationTarget objects (0-2 targets).
+        """
+        try:
+            from data_pipeline.connectors.usgs import (
+                compute_resource_extraction_index,
+                compute_reserve_depletion_ratio,
+            )
+        except (ImportError, ModuleNotFoundError):
+            return []
+
+        usgs_dir = str(self.usgs_data_dir) if self.usgs_data_dir else None
+        targets: list[CalibrationTarget] = []
+
+        # Extraction index -> proxy for NRUR
+        ext_index = compute_resource_extraction_index(usgs_dir)
+        if not ext_index.empty and len(ext_index) >= 3:
+            targets.append(CalibrationTarget(
+                variable_name="resource_extraction_index",
+                years=np.array(ext_index.index, dtype=int),
+                values=np.array(ext_index.values, dtype=float),
+                unit="index_base_100",
+                weight=weight,
+                source="usgs:resource_extraction_index",
+                nrmsd_method="change_rate",
+            ))
+
+        # Depletion ratio -> proxy for (1 - NRFR) rate
+        depl_ratio = compute_reserve_depletion_ratio(usgs_dir)
+        if not depl_ratio.empty and len(depl_ratio) >= 3:
+            targets.append(CalibrationTarget(
+                variable_name="reserve_depletion_ratio",
+                years=np.array(depl_ratio.index, dtype=int),
+                values=np.array(depl_ratio.values, dtype=float),
+                unit="dimensionless",
+                weight=weight,
+                source="usgs:reserve_depletion_ratio",
+                nrmsd_method="change_rate",
+            ))
+
+        return targets
+
+    def cross_validate_usgs(
+        self,
+        engine_factory: Callable[
+            [dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]
+        ],
+        params: dict[str, float],
+        weight: float = 0.5,
+    ) -> Optional[BridgeResult]:
+        """Run Layer 3 cross-validation: USGS resource proxies.
+
+        Args:
+            engine_factory: Callable(params) -> (trajectories, time_index)
+            params: Parameter dict to evaluate
+            weight: Weight for USGS targets
+
+        Returns:
+            BridgeResult or None if USGS data unavailable.
+        """
+        usgs_targets = self.load_usgs_targets(weight)
+        if not usgs_targets:
+            return None
+
+        try:
+            trajectories, time_index = engine_factory(params)
+        except Exception:
+            return None
+
+        return self.bridge.compare(usgs_targets, trajectories, time_index)
 
     def run(
         self,
@@ -219,6 +311,17 @@ class EmpiricalCalibrationRunner:
                 )
             except Exception:
                 pass
+
+        # ── Layer 3: USGS cross-validation (post-calibration) ──────────
+        final_params = report.calibrated_parameters or defaults
+        usgs_targets = self.load_usgs_targets()
+        report.usgs_targets_loaded = len(usgs_targets)
+        if usgs_targets:
+            usgs_result = self.cross_validate_usgs(
+                engine_factory, final_params,
+            )
+            if usgs_result is not None:
+                report.usgs_result = usgs_result
 
         return report
 

@@ -20,13 +20,10 @@ import time
 from datetime import datetime, timezone
 
 import pandas as pd
-import requests  # type: ignore[import-untyped]
 
-from data_pipeline.config import PipelineConfig
-from data_pipeline.schema import FetchResult
-from data_pipeline.storage.cache import fetch_with_cache
-from data_pipeline.storage.metadata_db import init_db, record_fetch, record_source_version
-from data_pipeline.storage.parquet_store import write_raw, read_raw
+# Pipeline deps imported lazily in fetch_usgs() so compute functions
+# remain importable without requests / pipeline extras installed.
+
 
 
 # USGS MCS PDF URLs (for metadata tracking)
@@ -38,14 +35,21 @@ URLS = {
 
 
 def fetch_usgs(
-    config: PipelineConfig,
+    config: object,
     year: str = "2026",
-) -> FetchResult:
+) -> object:
     """Download USGS Mineral Commodity Summaries PDF metadata.
 
     Also produces a proxy for non-renewable resources using cumulative
     CO2 emissions from GCP as a proxy for resource depletion.
     """
+    import requests  # type: ignore[import-untyped]
+
+    from data_pipeline.schema import FetchResult
+    from data_pipeline.storage.cache import fetch_with_cache
+    from data_pipeline.storage.metadata_db import init_db, record_fetch, record_source_version
+    from data_pipeline.storage.parquet_store import write_raw, read_raw
+
     url = URLS.get(year)
     if not url:
         return FetchResult(
