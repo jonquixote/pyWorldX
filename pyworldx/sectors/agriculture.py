@@ -90,8 +90,9 @@ class AgricultureSector:
     land_development_rate: float = 0.005
     sfpc: float = _SFPC
 
-    # Internal state for SMOOTH3 on FPC (avoids allocation oscillation)
-    _smooth_fpc: float = _SFPC
+    # Internal state for SMOOTH2 on FPC (2-stage cascade, matches W3-03)
+    _smooth_fpc_s1: float = _SFPC
+    _smooth_fpc_s2: float = _SFPC
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -121,14 +122,14 @@ class AgricultureSector:
         iopc = io / max(pop, 1.0)
 
         # ── Smoothed FPC for allocation decisions ────────────────────
-        # W3-03 uses SMOOTH2 on food ratio (~2yr delay). We use an EMA
-        # on the previous step's FPC to damp the FIOAA oscillation,
-        # then update the smooth with THIS step's actual FPC at the end.
+        # W3-03 uses SMOOTH2 on food ratio (~2yr delay).
+        # SMOOTH2 = two cascaded first-order delays, each with tau/2.
         smooth_tau = 2.0  # smoothing time constant (years)
-        alpha = min(ctx.master_dt / smooth_tau, 1.0)
+        half_tau = smooth_tau / 2.0
+        alpha = min(ctx.master_dt / half_tau, 1.0)
 
         # ── Agricultural input allocation ─────────────────────────────
-        fpc_ratio = self._smooth_fpc / self.sfpc
+        fpc_ratio = self._smooth_fpc_s2 / self.sfpc
         fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
 
         # Agricultural input
@@ -149,9 +150,10 @@ class AgricultureSector:
         food = al * land_yield * _LFH * (1.0 - _PL)
         fpc_raw = food / max(pop, 1.0)
 
-        # Update smooth with this step's actual FPC
-        self._smooth_fpc += alpha * (fpc_raw - self._smooth_fpc)
-        fpc = self._smooth_fpc
+        # Update SMOOTH2 cascade with this step's actual FPC
+        self._smooth_fpc_s1 += alpha * (fpc_raw - self._smooth_fpc_s1)
+        self._smooth_fpc_s2 += alpha * (self._smooth_fpc_s1 - self._smooth_fpc_s2)
+        fpc = self._smooth_fpc_s2
 
         # ── Land dynamics ─────────────────────────────────────────────
         remaining = max(self.potential_arable_land - al, 0.0)
@@ -187,6 +189,7 @@ class AgricultureSector:
             "food_per_capita": Quantity(fpc, "food_units_per_person"),
             "land_yield": Quantity(land_yield, "kg_per_hectare_year"),
             "frac_io_to_agriculture": Quantity(fioaa, "dimensionless"),
+            "aiph": Quantity(aiph, "agricultural_inputs_per_hectare"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -200,6 +203,7 @@ class AgricultureSector:
             "food_per_capita",
             "land_yield",
             "frac_io_to_agriculture",
+            "aiph",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
