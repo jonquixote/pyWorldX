@@ -153,7 +153,7 @@ class DataBridge:
 
             # Filter to world aggregate
             if "country_code" in df.columns:
-                df = df[df["country_code"].isin(["WLD", "World", "5000"])]  # type: ignore[assignment]
+                df = df[df["country_code"].isin(["WLD", "World", "5000"])]
 
             if df.empty:
                 continue

@@ -45,9 +45,9 @@ def min_max_scale(
     rng = s_max - s_min
     lo, hi = feature_range
     if rng < 1e-15:
-        result: "pd.Series[float]" = pd.Series(lo, index=series.index)  # type: ignore[assignment]
+        result: "pd.Series[float]" = pd.Series(lo, index=series.index)
     else:
-        result = (series - s_min) / rng * (hi - lo) + lo  # type: ignore[assignment]
+        result = (series - s_min) / rng * (hi - lo) + lo
     if transform_log is not None:
         transform_log.append(
             f"min_max_scale: [{s_min:.4f}, {s_max:.4f}] -> [{lo}, {hi}]"
