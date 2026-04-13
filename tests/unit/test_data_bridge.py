@@ -9,8 +9,6 @@ Covers:
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -25,7 +23,6 @@ from pyworldx.data.bridge import (
 )
 from data_pipeline.connectors.world3_reference import (
     World3ReferenceConnector,
-    _REFERENCE_DATA,
 )
 from pyworldx.calibration.empirical import (
     EmpiricalCalibrationReport,

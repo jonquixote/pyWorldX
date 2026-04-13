@@ -22,7 +22,6 @@ from pyworldx.presets import (
     register_preset,
 )
 from pyworldx.calibration.parameters import (
-    ParameterRegistry,
     build_world3_parameter_registry,
 )
 from pyworldx.scenarios.scenario import Scenario

@@ -126,3 +126,136 @@ def fetch_usgs(
         records_fetched=records, checksum_sha256=sha,
         cache_hit=cache_hit,
     )
+
+
+# ── Aggregate resource metrics (Layer 3 Cross-Validation) ────────────
+
+def compute_resource_extraction_index(
+    usgs_data_dir: str | None = None,
+) -> pd.Series:
+    """Compute an aggregate resource extraction index from USGS world production.
+
+    Creates a weighted index (base year = earliest available year = 100)
+    by summing world mine production across all commodities for each year.
+
+    This serves as a proxy for NRUR (nonrenewable resource usage rate)
+    in the World3 model.
+
+    Args:
+        usgs_data_dir: Path to USGS data directory.
+            Defaults to data_pipeline/data/usgs/
+
+    Returns:
+        pd.Series indexed by year with extraction index values.
+        Returns empty Series if data is unavailable.
+    """
+    from pathlib import Path
+
+    if usgs_data_dir is None:
+        usgs_data_dir = str(
+            Path(__file__).parent.parent / "data" / "usgs"
+        )
+
+    csv_path = Path(usgs_data_dir) / "world_production.csv"
+    if not csv_path.exists():
+        return pd.Series(dtype=float, name="resource_extraction_index")
+
+    df = pd.read_csv(csv_path)
+
+    # Filter to world totals only
+    world = df[df["is_world_total"] == True].copy()  # noqa: E712
+    if world.empty:
+        return pd.Series(dtype=float, name="resource_extraction_index")
+
+    # Use mine_production_current_year as the primary metric
+    prod_col = "mine_production_current_year"
+    if prod_col not in world.columns:
+        return pd.Series(dtype=float, name="resource_extraction_index")
+
+    # Drop rows with missing production
+    world = world.dropna(subset=[prod_col])
+
+    # Sum total production across all commodities per year
+    # Note: mcs_year is the publication year; production is for prior year
+    # So the actual production year is mcs_year - 1
+    world = world.copy()
+    world["production_year"] = world["mcs_year"] - 1
+
+    yearly_total = world.groupby("production_year")[prod_col].sum()
+
+    if yearly_total.empty:
+        return pd.Series(dtype=float, name="resource_extraction_index")
+
+    # Normalize: base year (earliest) = 100
+    base_value = yearly_total.iloc[0]
+    if base_value == 0:
+        base_value = 1.0
+
+    index = (yearly_total / base_value) * 100.0
+    index.name = "resource_extraction_index"
+    index.index.name = "year"
+
+    return index
+
+
+def compute_reserve_depletion_ratio(
+    usgs_data_dir: str | None = None,
+) -> pd.Series:
+    """Compute aggregate reserve depletion ratio from USGS data.
+
+    For each year, computes: sum(production) / sum(reserves) across all
+    commodities. This is the fraction of remaining reserves extracted
+    per year — analogous to (1 - NRFR) rate of change in World3.
+
+    Args:
+        usgs_data_dir: Path to USGS data directory.
+
+    Returns:
+        pd.Series indexed by year with depletion ratio values.
+        Returns empty Series if data is unavailable.
+    """
+    from pathlib import Path
+
+    if usgs_data_dir is None:
+        usgs_data_dir = str(
+            Path(__file__).parent.parent / "data" / "usgs"
+        )
+
+    csv_path = Path(usgs_data_dir) / "world_production.csv"
+    if not csv_path.exists():
+        return pd.Series(dtype=float, name="reserve_depletion_ratio")
+
+    df = pd.read_csv(csv_path)
+
+    # Filter to world totals only
+    world = df[df["is_world_total"] == True].copy()  # noqa: E712
+    if world.empty:
+        return pd.Series(dtype=float, name="reserve_depletion_ratio")
+
+    prod_col = "mine_production_current_year"
+    res_col = "reserves"
+
+    if prod_col not in world.columns or res_col not in world.columns:
+        return pd.Series(dtype=float, name="reserve_depletion_ratio")
+
+    # Drop where both are missing
+    world = world.dropna(subset=[prod_col, res_col])
+    world = world[world[res_col] > 0]
+
+    if world.empty:
+        return pd.Series(dtype=float, name="reserve_depletion_ratio")
+
+    world = world.copy()
+    world["production_year"] = world["mcs_year"] - 1
+
+    yearly_prod = world.groupby("production_year")[prod_col].sum()
+    yearly_res = world.groupby("production_year")[res_col].sum()
+
+    # Depletion ratio = production / reserves (per year)
+    ratio = yearly_prod / yearly_res
+    ratio = ratio.dropna()
+    ratio.name = "reserve_depletion_ratio"
+    ratio.index.name = "year"
+
+    return ratio
+

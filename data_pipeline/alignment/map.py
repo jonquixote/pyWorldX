@@ -1457,6 +1457,30 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
             quality_flag="REFERENCE",
         ),
     ],
+
+    # ── USGS resource proxies (Layer 3 cross-validation) ──────────────
+    "usgs_resource_extraction_index": [
+        EntityMapping(
+            entity="resources.extraction_index",
+            year_col="year",
+            value_col="value",
+            unit="index_1996_eq_100",
+            transforms=[],
+            country_filter=None,
+            quality_flag="PROXY",
+        ),
+    ],
+    "usgs_reserve_depletion_ratio": [
+        EntityMapping(
+            entity="resources.depletion_ratio",
+            year_col="year",
+            value_col="value",
+            unit="dimensionless",
+            transforms=[],
+            country_filter=None,
+            quality_flag="PROXY",
+        ),
+    ],
 }
 
 
