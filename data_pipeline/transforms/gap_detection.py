@@ -60,7 +60,7 @@ def detect_gaps(
     if group_cols:
         groups = df.groupby(group_cols, group_keys=False)
     else:
-        groups = [(None, df)]
+        groups = [(None, df)]  # type: ignore[assignment]
 
     result_frames = []
 

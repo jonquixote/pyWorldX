@@ -130,7 +130,7 @@ SECTOR_STOCK_MAP: dict[str, dict[str, Any]] = {
 def extract_initial_conditions(
     aligned_dir: Path,
     target_year: int = 1900,
-    sector_stock_map: Optional[dict[str, dict]] = None,
+    sector_stock_map: Optional[dict[str, dict[str, Any]]] = None,
 ) -> dict[str, dict[str, Any]]:
     """Extract sector stock initial conditions from aligned data.
     
@@ -178,13 +178,13 @@ def extract_initial_conditions(
         df = df.copy()
         df["year_diff"] = (df["year"] - target_year).abs()
         closest = df.loc[df["year_diff"].idxmin()]
-        
+
         # Extract value
-        value_col = "value" if "value" in df.columns else df.columns[-1]
-        raw_value = closest.get(value_col, stock_info["default_value"])
-        
+        value_col = "value" if "value" in df.columns else str(df.columns[-1])
+        raw_value = closest.get(value_col, stock_info["default_value"])  # type: ignore[arg-type]
+
         # Apply scale factor
-        scaled_value = float(raw_value) * stock_info["scale_factor"]
+        scaled_value = float(raw_value) * stock_info["scale_factor"]  # type: ignore[arg-type]
         
         results[entity] = {
             "sector": stock_info["sector"],

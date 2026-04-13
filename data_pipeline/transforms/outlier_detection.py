@@ -52,9 +52,9 @@ def detect_outliers_zscore(
             std = values.std()
 
             if std > 0:
-                z_scores = (values - mean) / std
+                z_scores: "pd.Series[float]" = (values - mean) / std
                 df.loc[group_df.index, "z_score"] = z_scores
-                outlier_mask = group_df.index[z_scores.abs() > z_threshold]
+                outlier_mask = group_df.index[z_scores.abs() > z_threshold]  # type: ignore[assignment]
                 df.loc[outlier_mask, "outlier_flag"] = "OUTLIER"
     else:
         values = df[value_col]
@@ -137,7 +137,7 @@ def detect_outliers_iqr(
         df["iqr_lower"] = lower
         df["iqr_upper"] = upper
 
-        outlier_mask = (values < lower) | (values > upper)
+        outlier_mask: "pd.Series[bool]" = (values < lower) | (values > upper)
         df.loc[outlier_mask, "outlier_flag_iqr"] = "OUTLIER"
 
     return df
@@ -180,7 +180,7 @@ def detect_sudden_changes(
         groups = df.sort_values([*group_cols, year_col]).groupby(group_cols)
     else:
         df = df.sort_values(year_col)
-        groups = [(None, df)]
+        groups: list[tuple[None, pd.DataFrame]] = [(None, df)]
 
     for group_key, group_df in groups:
         idx = group_df.index

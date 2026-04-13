@@ -15,9 +15,10 @@ from __future__ import annotations
 import io
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import pandas as pd
-import requests
+import requests  # type: ignore[import-untyped]
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult
@@ -42,7 +43,7 @@ def search_owid(
     query: str,
     kind: str = "indicator",
     limit: int = 10,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Search OWID indicators."""
     params = {"q": query, "kind": kind}
     r = requests.get(SEARCH_URL, params=params, timeout=30)

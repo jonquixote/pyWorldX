@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import requests
+import requests  # type: ignore[import-untyped]
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult

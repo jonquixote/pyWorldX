@@ -54,7 +54,7 @@ def interpolate_annual(
     if group_cols:
         groups = df.groupby(group_cols, group_keys=False)
     else:
-        groups = [(None, df)]
+        groups = [(None, df)]  # type: ignore[assignment]
 
     for group_key, group_df in groups:
         group_df = group_df.sort_values(year_col).copy()
@@ -79,13 +79,13 @@ def interpolate_annual(
         interp_df = interp_df.reindex(annual_index)
 
         # Interpolate the value column
-        interp_df[value_col] = interp_df[value_col].interpolate(method=method)
+        interp_df[value_col] = interp_df[value_col].interpolate(method=method)  # type: ignore[arg-type]
 
         # Fill gaps for other numeric columns
         if fill_gaps:
             for col in interp_df.select_dtypes(include=["number"]).columns:
                 if col != value_col:
-                    interp_df[col] = interp_df[col].interpolate(method=method)
+                    interp_df[col] = interp_df[col].interpolate(method=method)  # type: ignore[arg-type]
 
         # Reset index
         interp_df = interp_df.reset_index()
@@ -95,7 +95,7 @@ def interpolate_annual(
         if group_cols:
             for i, col in enumerate(group_cols):
                 if col not in interp_df.columns:
-                    interp_df[col] = group_key if isinstance(group_key, str) else group_key[i]
+                    interp_df[col] = group_key if isinstance(group_key, str) else group_key[i]  # type: ignore[index]
 
         result_frames.append(interp_df)
 
@@ -138,7 +138,7 @@ def fill_gaps(
     if group_cols:
         groups = df.groupby(group_cols, group_keys=False)
     else:
-        groups = [(None, df)]
+        groups = [(None, df)]  # type: ignore[assignment]
 
     for group_key, group_df in groups:
         group_df = group_df.sort_values(year_col).copy()
@@ -216,7 +216,7 @@ def resample_to_timestep(
     if group_cols:
         groups = df.groupby(group_cols, group_keys=False)
     else:
-        groups = [(None, df)]
+        groups = [(None, df)]  # type: ignore[assignment]
 
     for group_key, group_df in groups:
         group_df = group_df.sort_values(year_col).copy()
@@ -230,7 +230,7 @@ def resample_to_timestep(
         # Interpolate
         interp_df = group_df.set_index(year_col)
         interp_df = interp_df.reindex(target_index)
-        interp_df[value_col] = interp_df[value_col].interpolate(method=method)
+        interp_df[value_col] = interp_df[value_col].interpolate(method=method)  # type: ignore[arg-type]
         interp_df = interp_df.reset_index()
         interp_df = interp_df.rename(columns={"index": year_col})
 

@@ -12,7 +12,7 @@ def per_capita(
 ) -> "pd.Series[float]":
     """Compute per-capita values."""
     common = total_series.index.intersection(population_series.index)
-    result = total_series.loc[common] / population_series.loc[common]
+    result: "pd.Series[float]" = total_series.loc[common] / population_series.loc[common]
     if transform_log is not None:
         transform_log.append("per_capita: total / population")
     return result
@@ -45,9 +45,9 @@ def min_max_scale(
     rng = s_max - s_min
     lo, hi = feature_range
     if rng < 1e-15:
-        result = pd.Series(lo, index=series.index)
+        result: "pd.Series[float]" = pd.Series(lo, index=series.index)  # type: ignore[assignment]
     else:
-        result = (series - s_min) / rng * (hi - lo) + lo
+        result = (series - s_min) / rng * (hi - lo) + lo  # type: ignore[assignment]
     if transform_log is not None:
         transform_log.append(
             f"min_max_scale: [{s_min:.4f}, {s_max:.4f}] -> [{lo}, {hi}]"

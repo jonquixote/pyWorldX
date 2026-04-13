@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 # Expected manifest schema
@@ -42,8 +42,8 @@ def validate_manifest(manifest_path: Path) -> dict[str, list[str]]:
     Returns:
         Dict with "errors" and "warnings" lists.
     """
-    errors = []
-    warnings = []
+    errors: list[str] = []
+    warnings: list[str] = []
     
     # Check file exists
     if not manifest_path.exists():
@@ -65,7 +65,7 @@ def validate_manifest(manifest_path: Path) -> dict[str, list[str]]:
     
     # Validate sources
     if "sources" in manifest:
-        sources = manifest["sources"]
+        sources = cast(dict[str, Any], manifest["sources"])
         if not isinstance(sources, dict):
             errors.append("'sources' should be a dict")
         else:
@@ -73,7 +73,7 @@ def validate_manifest(manifest_path: Path) -> dict[str, list[str]]:
                 if not isinstance(info, dict):
                     errors.append(f"Source '{source_id}' info should be a dict")
                     continue
-                for field, field_type in MANIFEST_SCHEMA["source_fields"].items():
+                for field, field_type in cast(dict[str, type], MANIFEST_SCHEMA["source_fields"]).items():
                     if field not in info:
                         warnings.append(f"Source '{source_id}' missing field: {field}")
                     elif not isinstance(info[field], field_type):
@@ -84,7 +84,7 @@ def validate_manifest(manifest_path: Path) -> dict[str, list[str]]:
     
     # Validate aligned entities
     if "aligned_entities" in manifest:
-        entities = manifest["aligned_entities"]
+        entities = cast(dict[str, Any], manifest["aligned_entities"])
         if not isinstance(entities, dict):
             errors.append("'aligned_entities' should be a dict")
         else:
@@ -92,7 +92,7 @@ def validate_manifest(manifest_path: Path) -> dict[str, list[str]]:
                 if not isinstance(info, dict):
                     errors.append(f"Entity '{entity}' info should be a dict")
                     continue
-                for field, field_type in MANIFEST_SCHEMA["entity_fields"].items():
+                for field, field_type in cast(dict[str, type], MANIFEST_SCHEMA["entity_fields"]).items():
                     if field not in info:
                         warnings.append(f"Entity '{entity}' missing field: {field}")
     

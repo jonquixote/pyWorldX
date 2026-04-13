@@ -81,7 +81,7 @@ def validate_transform_dependencies(
 
 def run_transform_pipeline(
     config: PipelineConfig,
-    transform_registry: dict[str, Callable],
+    transform_registry: dict[str, Callable[[Any], Any]],
 ) -> dict[str, Any]:
     """Run the full transform pipeline with dependency validation.
 
@@ -152,7 +152,7 @@ def _topological_sort(
     visited = set()
     order = []
 
-    def visit(name: str):
+    def visit(name: str) -> None:
         if name in visited:
             return
         visited.add(name)

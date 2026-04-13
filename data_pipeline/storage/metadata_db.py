@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 def init_db(db_path: Path) -> None:
@@ -141,7 +141,7 @@ def record_transform(
     conn.close()
 
 
-def get_source_info(db_path: Path, source_id: str) -> Optional[dict]:
+def get_source_info(db_path: Path, source_id: str) -> Optional[dict[str, Any]]:
     """Get the latest version info for a source."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -154,7 +154,7 @@ def get_source_info(db_path: Path, source_id: str) -> Optional[dict]:
     return dict(row)
 
 
-def list_all_sources(db_path: Path) -> list[dict]:
+def list_all_sources(db_path: Path) -> list[dict[str, Any]]:
     """List all sources with their latest version info."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row

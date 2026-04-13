@@ -11,10 +11,10 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
-import requests
+import requests  # type: ignore[import-untyped]
 
 from data_pipeline.config import PipelineConfig
 from data_pipeline.schema import FetchResult
@@ -41,7 +41,7 @@ def _get_api_key(config: PipelineConfig) -> str:
 def fetch_eia(
     config: PipelineConfig,
     route: str = "total_energy",
-    facets: Optional[dict] = None,
+    facets: Optional[dict[str, Any]] = None,
     start_year: int = 1900,
     end_year: int = 2024,
 ) -> FetchResult:

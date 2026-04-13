@@ -23,7 +23,8 @@ def annual_pct_change(series: "pd.Series[float]") -> "pd.Series[float]":
     shifted = series.shift(1)
     # Avoid division by zero
     safe_shifted = shifted.replace(0, np.nan)
-    return 100.0 * (series.diff() / safe_shifted)
+    result: "pd.Series[float]" = 100.0 * (series.diff() / safe_shifted)
+    return result
 
 
 def nrmsd_direct(

@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 
 
@@ -21,8 +21,8 @@ def fetch_with_cache(
     cache_dir: Path,
     source_id: str,
     ttl_days: int = 7,
-    headers: Optional[dict] = None,
-    params: Optional[dict] = None,
+    headers: Optional[dict[str, Any]] = None,
+    params: Optional[dict[str, Any]] = None,
     timeout: int = 30,
 ) -> tuple[bytes, str, bool]:
     """Fetch a URL with disk-based caching.
@@ -88,7 +88,7 @@ def clear_cache(cache_dir: Path, source_id: Optional[str] = None) -> int:
     return count
 
 
-def cache_status(cache_dir: Path, source_id: str, ttl_days: int = 7) -> dict:
+def cache_status(cache_dir: Path, source_id: str, ttl_days: int = 7) -> dict[str, Any]:
     """Check cache status for a source.
 
     Returns:

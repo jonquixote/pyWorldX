@@ -153,7 +153,7 @@ class DataBridge:
 
             # Filter to world aggregate
             if "country_code" in df.columns:
-                df = df[df["country_code"].isin(["WLD", "World", "5000"])]
+                df = df[df["country_code"].isin(["WLD", "World", "5000"])]  # type: ignore[assignment]
 
             if df.empty:
                 continue
@@ -165,11 +165,11 @@ class DataBridge:
 
             value_col = "value"
             if value_col not in df.columns:
-                numeric_cols = df.select_dtypes(include=["number"]).columns
-                numeric_cols = [c for c in numeric_cols if c != year_col]
-                if not numeric_cols:
+                numeric_idx = df.select_dtypes(include=["number"]).columns
+                col_names = [c for c in numeric_idx if c != year_col]
+                if not col_names:
                     continue
-                value_col = numeric_cols[0]
+                value_col = col_names[0]
 
             # Sort and deduplicate
             df = df.sort_values(year_col).drop_duplicates(subset=[year_col], keep="last")

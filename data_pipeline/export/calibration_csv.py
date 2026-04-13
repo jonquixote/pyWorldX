@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -92,7 +92,7 @@ def export_calibration_csv(
 def export_all_calibration(
     aligned_dir: Path,
     output_dir: Path,
-    entity_map: Optional[dict[str, dict]] = None,
+    entity_map: Optional[dict[str, dict[str, Any]]] = None,
 ) -> list[Path]:
     """Export all aligned entities as calibration CSVs.
 

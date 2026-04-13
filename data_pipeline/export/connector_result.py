@@ -174,12 +174,12 @@ def generate_connector_result(
 
     # Filter by country
     if "country_code" in df.columns:
-        df = df[df["country_code"] == country]
+        df = df[df["country_code"] == country]  # type: ignore[assignment]
 
     # Filter by year
     year_col = "year" if "year" in df.columns else "date"
     if year_col in df.columns:
-        df = df[df[year_col].between(start_year, end_year)]
+        df = df[df[year_col].between(start_year, end_year)]  # type: ignore[assignment]
 
     if df.empty:
         return None
@@ -193,7 +193,7 @@ def generate_connector_result(
         numeric_cols = df.select_dtypes(include=["number"]).columns
         if len(numeric_cols) == 0:
             return None
-        value_col = numeric_cols[0]
+        value_col = str(numeric_cols[0])
 
     series = df.set_index(year_col)[value_col].sort_index()
     series.index.name = None

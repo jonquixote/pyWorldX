@@ -62,7 +62,7 @@ def collect(
 
 
 @app.command()
-def status():
+def status() -> None:
     """Show cached vs needed sources."""
     config = PipelineConfig()
     init_db(config.metadata_db)
@@ -97,7 +97,7 @@ def clear(
 
 
 @app.command()
-def ls_raw():
+def ls_raw() -> None:
     """List sources in the raw Parquet store."""
     config = PipelineConfig()
     sources = list_sources(config.raw_dir)
@@ -109,7 +109,7 @@ def ls_raw():
 
 
 @app.command()
-def ls_aligned():
+def ls_aligned() -> None:
     """List entities in the aligned Parquet store."""
     config = PipelineConfig()
     entities = list_entities(config.aligned_dir)
@@ -360,7 +360,7 @@ def transform(
 
 
 @app.command()
-def validate():
+def validate() -> None:
     """Run quality checks on aligned data."""
     config = PipelineConfig()
     init_db(config.metadata_db)
@@ -433,7 +433,7 @@ def validate():
 
 
 @app.command()
-def cross_check():
+def cross_check() -> None:
     """Compare overlapping sources for data consistency."""
     config = PipelineConfig()
     init_db(config.metadata_db)
@@ -541,7 +541,7 @@ def diff(
 
 
 @app.command()
-def fetch_owid():
+def fetch_owid() -> None:
     """Fetch all 6 OWID indicators for pyWorldX."""
     config = PipelineConfig()
     init_db(config.metadata_db)

@@ -15,7 +15,7 @@ correct W3-03 table values.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -149,8 +149,12 @@ class World3ReferenceConnector:
 
     def fetch_all(self) -> dict[str, pd.Series]:
         """Return all available reference trajectories."""
-        return {name: self.fetch(name) for name in self.available_variables()
-                if self.fetch(name) is not None}
+        result: dict[str, pd.Series] = {}
+        for name in self.available_variables():
+            series = self.fetch(name)
+            if series is not None:
+                result[name] = series
+        return result
 
     def fetch_all_interpolated(
         self,
@@ -178,7 +182,7 @@ class World3ReferenceConnector:
     def to_calibration_targets(
         self,
         weight: float = 1.0,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Convert all reference trajectories to CalibrationTarget-compatible dicts.
 
         Returns a list of dicts that can be used to construct CalibrationTarget

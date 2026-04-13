@@ -20,7 +20,7 @@ NORMALIZER_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {}
 
 def register_normalizer(prefix: str):
     """Decorator to register a normalizer function for a source_id prefix."""
-    def decorator(func: Callable[[pd.DataFrame], pd.DataFrame]) -> Callable:
+    def decorator(func: Callable[[pd.DataFrame], pd.DataFrame]) -> Callable[[pd.DataFrame], pd.DataFrame]:
         NORMALIZER_REGISTRY[prefix] = func
         return func
     return decorator

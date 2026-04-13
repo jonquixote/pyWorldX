@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +43,7 @@ class QualityReport(BaseModel):
     generated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-    entities: dict[str, dict] = Field(default_factory=dict)
-    cross_source_checks: list[dict] = Field(default_factory=list)
-    freshness: dict[str, dict] = Field(default_factory=dict)
+    entities: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    cross_source_checks: list[dict[str, Any]] = Field(default_factory=list)
+    freshness: dict[str, dict[str, Any]] = Field(default_factory=dict)
     overall_status: str = "pending"       # "pass", "warn", "fail"

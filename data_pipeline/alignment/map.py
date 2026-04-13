@@ -12,14 +12,14 @@ one or more ontology entities. The mapper defines:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
 class TransformSpec:
     """Specification for a single transform to apply."""
     name: str
-    kwargs: dict = field(default_factory=dict)
+    kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -30,19 +30,20 @@ class EntityMapping:
     
     # Column name mappings
     country_col: Optional[str] = None
-    year_col: Optional[str] = "year"
-    value_col: str = "value"
+    year_col: Optional[str] = None
+    value_col: Optional[str] = None
     unit_col: Optional[str] = "unit"
-    
+
     # Transform pipeline to apply (in order)
     transforms: list[TransformSpec] = field(default_factory=list)
-    
+
     # Unit of the final aligned value
     unit: Optional[str] = None
-    
-    # Country filtering: "world" for World aggregate only, 
-    # "all" for all countries, or list of specific country codes
-    country_filter: str | list[str] = "world"
+
+    # Country filtering: "world" for World aggregate only,
+    # "all" for all countries, None for no country filtering,
+    # or list of specific country codes
+    country_filter: str | list[str] | None = "world"
     world_country_code: str = "5000"  # FAO World code; overridden per-source if needed
     
     # World area name in the source data

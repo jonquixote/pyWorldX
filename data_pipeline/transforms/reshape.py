@@ -15,7 +15,7 @@ import pandas as pd
 def melt_wide_to_long(
     df: pd.DataFrame,
     id_cols: Optional[list[str]] = None,
-    year_prefix: str = None,
+    year_prefix: Optional[str] = None,
     value_name: str = "value",
     var_name: str = "year",
 ) -> pd.DataFrame:
@@ -150,13 +150,13 @@ def filter_by_year(
     if year_col not in df.columns:
         return df
 
-    mask = pd.Series(True, index=df.index)
+    mask: "pd.Series[bool]" = pd.Series(True, index=df.index)
     if start_year is not None:
         mask &= df[year_col] >= start_year
     if end_year is not None:
         mask &= df[year_col] <= end_year
 
-    return df[mask].copy()
+    return df[mask].copy()  # type: ignore[return-value]
 
 
 def filter_by_country(
@@ -177,4 +177,4 @@ def filter_by_country(
     if country_col not in df.columns or countries is None:
         return df
 
-    return df[df[country_col].isin(countries)].copy()
+    return df[df[country_col].isin(countries)].copy()  # type: ignore[return-value]

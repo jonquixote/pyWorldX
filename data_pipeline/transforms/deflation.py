@@ -44,15 +44,10 @@ def deflate_series(
 
     # Load deflator if not provided
     if deflator_df is None:
-        deflator_df = read_raw(
-            "world_bank_NY.GDP.DEFL.KD.ZG",
-            raw_dir=None,  # Will be set by caller
+        raise ValueError(
+            "deflator_df is required. Load world_bank_NY.GDP.DEFL.KD.ZG "
+            "from the raw store and pass it as deflator_df."
         )
-        if deflator_df is None:
-            raise FileNotFoundError(
-                "GDP deflator not found in raw store. "
-                "Run world_bank connector first."
-            )
 
     # Normalize deflator to base_year = 100
     deflator_normalized = deflator_df.copy()
