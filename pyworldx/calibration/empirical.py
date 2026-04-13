@@ -20,7 +20,7 @@ from typing import Any, Callable, Optional
 
 import numpy as np
 
-from pyworldx.calibration.metrics import CalibrationResult, CrossValidationConfig
+from pyworldx.calibration.metrics import CrossValidationConfig
 from pyworldx.calibration.parameters import ParameterRegistry
 from pyworldx.calibration.pipeline import PipelineReport, run_calibration_pipeline
 from pyworldx.data.bridge import (

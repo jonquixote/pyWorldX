@@ -16,12 +16,11 @@ Architecture (from data_pipeline_integration_report.md):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 import numpy as np
-import pandas as pd
 
 
 # ── Entity-to-Engine mapping ──────────────────────────────────────────
