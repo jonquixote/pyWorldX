@@ -118,7 +118,7 @@ class EmpiricalCalibrationRunner:
     def validate_against_reference(
         self,
         engine_factory: Callable[
-            [dict[str, float]], tuple[dict[str, np.ndarray], np.ndarray]
+            [dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]
         ],
         params: dict[str, float],
     ) -> Optional[BridgeResult]:
@@ -146,7 +146,7 @@ class EmpiricalCalibrationRunner:
         self,
         registry: ParameterRegistry,
         engine_factory: Callable[
-            [dict[str, float]], tuple[dict[str, np.ndarray], np.ndarray]
+            [dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]
         ],
         weights: Optional[dict[str, float]] = None,
         cross_val_config: Optional[CrossValidationConfig] = None,
@@ -225,7 +225,7 @@ class EmpiricalCalibrationRunner:
     def quick_evaluate(
         self,
         engine_factory: Callable[
-            [dict[str, float]], tuple[dict[str, np.ndarray], np.ndarray]
+            [dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]
         ],
         params: dict[str, float],
         weights: Optional[dict[str, float]] = None,

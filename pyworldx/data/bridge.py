@@ -81,8 +81,8 @@ class CalibrationTarget:
     """
 
     variable_name: str           # Engine variable (e.g., "POP")
-    years: np.ndarray            # Year indices (integer years)
-    values: np.ndarray           # Observed values at those years
+    years: np.ndarray[Any, Any]  # Year indices (integer years)
+    values: np.ndarray[Any, Any] # Observed values at those years
     unit: str                    # Unit string (for provenance)
     weight: float = 1.0          # Weight in composite NRMSD
     source: str = ""             # Provenance description
@@ -261,8 +261,8 @@ class DataBridge:
     def compare(
         self,
         targets: list[CalibrationTarget],
-        engine_trajectories: dict[str, np.ndarray],
-        engine_time: np.ndarray,
+        engine_trajectories: dict[str, np.ndarray[Any, Any]],
+        engine_time: np.ndarray[Any, Any],
     ) -> BridgeResult:
         """Compare engine trajectories against calibration targets.
 
@@ -328,7 +328,7 @@ class DataBridge:
     def build_objective(
         self,
         targets: list[CalibrationTarget],
-        engine_factory: Callable[[dict[str, float]], tuple[dict[str, np.ndarray], np.ndarray]],
+        engine_factory: Callable[[dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]],
     ) -> Callable[[dict[str, float]], float]:
         """Build NRMSD objective function from targets.
 
@@ -355,12 +355,12 @@ class DataBridge:
 
     def _normalize_pair(
         self,
-        engine_at_years: np.ndarray,
-        obs_values: np.ndarray,
-        obs_years: np.ndarray,
-        full_engine_traj: np.ndarray,
-        full_engine_time: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        engine_at_years: np.ndarray[Any, Any],
+        obs_values: np.ndarray[Any, Any],
+        obs_years: np.ndarray[Any, Any],
+        full_engine_traj: np.ndarray[Any, Any],
+        full_engine_time: np.ndarray[Any, Any],
+    ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
         """Normalize both series to reference year baseline."""
         # Engine value at reference year
         engine_ref = float(np.interp(
@@ -382,8 +382,8 @@ class DataBridge:
 
     @staticmethod
     def _compute_nrmsd(
-        model: np.ndarray,
-        reference: np.ndarray,
+        model: np.ndarray[Any, Any],
+        reference: np.ndarray[Any, Any],
         method: str,
     ) -> float:
         """Compute NRMSD using the specified method."""
