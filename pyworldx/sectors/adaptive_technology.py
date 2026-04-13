@@ -1,19 +1,16 @@
-"""World3-03 Adaptive Technology sector (Section 14 / 13.3).
+"""Adaptive Technology sector (pyWorldX extension).
 
-Represents technology development that can modify resource usage
-efficiency, pollution generation intensity, and agricultural yield.
+NOTE: This sector is a pyWorldX extension. It is NOT part of the
+canonical World3-03 model. In W3-03, technology is implemented as
+three separate embedded stocks:
+  - Resource Conservation Technology (RCT) in the Resource sector
+  - Persistent Pollution Technology (PPT) in the Pollution sector
+  - Land Yield Technology (LYT) in the Agriculture sector
+Each activates at POLICY_YEAR with its own change rate and SMOOTH3 delay.
 
-In World3-03, technology is modeled as a delayed adaptive response
-to perceived problems (resource scarcity, pollution, food shortage),
-with implementation delays and costs drawn from industrial output.
-
-  technology_index = f(perceived_problems, R&D_investment)
-  resource_tech    = tech_multiplier on extraction efficiency
-  pollution_tech   = tech_multiplier on pollution absorption
-  agriculture_tech = tech_multiplier on land yield
-
-This is a policy-lever sector: it amplifies or dampens feedback
-loops in other sectors through technology multipliers.
+This unified sector provides a single technology index that modulates
+all three domains. It activates only when t >= POLICY_YEAR (default 4000,
+meaning inactive in the base run).
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
 
-# Technology development rate from R&D fraction (table)
+# Technology development rate from R&D fraction
 _TECH_DEV_X = (0.0, 0.02, 0.04, 0.06, 0.08, 0.10)
 _TECH_DEV_Y = (0.0, 0.5, 1.0, 1.4, 1.7, 1.8)
 
@@ -31,26 +28,30 @@ _TECH_DEV_Y = (0.0, 0.5, 1.0, 1.4, 1.7, 1.8)
 _TECH_COST_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 _TECH_COST_Y = (1.0, 0.95, 0.85, 0.70, 0.55, 0.40)
 
-# Resource technology effectiveness (table)
+# Resource technology effectiveness
 _RES_TECH_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 _RES_TECH_Y = (1.0, 1.1, 1.25, 1.35, 1.4, 1.42)
 
-# Pollution technology effectiveness (table)
+# Pollution technology effectiveness
 _POL_TECH_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 _POL_TECH_Y = (1.0, 1.2, 1.5, 1.75, 1.9, 1.95)
 
-# Agriculture technology effectiveness (table)
+# Agriculture technology effectiveness
 _AG_TECH_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 _AG_TECH_Y = (1.0, 1.15, 1.35, 1.5, 1.6, 1.65)
 
+_POLICY_YEAR = 4000  # default: inactive in base run
+
 
 class AdaptiveTechnologySector:
-    """World3-03 Adaptive Technology sector.
+    """Adaptive Technology sector (pyWorldX extension, not in W3-03).
 
     Stock: TECH (technology index, dimensionless, initial=1.0)
     Reads: industrial_output, nr_fraction_remaining, pollution_index, food_per_capita
     Writes: TECH, resource_tech_mult, pollution_tech_mult, agriculture_tech_mult,
             tech_cost_fraction
+
+    Before POLICY_YEAR, all multipliers output 1.0 (no effect).
     """
 
     name = "adaptive_technology"
@@ -59,14 +60,15 @@ class AdaptiveTechnologySector:
 
     # Parameters
     initial_tech: float = 1.0
-    rd_fraction_base: float = 0.02  # base R&D fraction of IO
-    tech_delay: float = 20.0  # years — implementation delay
-    tech_depreciation: float = 0.05  # 1/lifetime
+    rd_fraction_base: float = 0.02
+    tech_delay: float = 20.0
+    tech_depreciation: float = 0.05
+    policy_year: float = _POLICY_YEAR
 
-    # Thresholds for perceived problems that trigger R&D
-    nr_scarcity_threshold: float = 0.5  # fraction remaining
-    pollution_concern_threshold: float = 1.0  # pollution index
-    food_concern_threshold: float = 1.5  # food per capita
+    # Thresholds for perceived problems
+    nr_scarcity_threshold: float = 0.5
+    pollution_concern_threshold: float = 1.0
+    food_concern_threshold: float = 1.5
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {"TECH": Quantity(self.initial_tech, "dimensionless")}
@@ -79,6 +81,16 @@ class AdaptiveTechnologySector:
         ctx: RunContext,
     ) -> dict[str, Quantity]:
         tech = stocks["TECH"].magnitude
+
+        # Before policy year: all outputs are inert (1.0)
+        if t < self.policy_year:
+            return {
+                "d_TECH": Quantity(0.0, "dimensionless"),
+                "resource_tech_mult": Quantity(1.0, "dimensionless"),
+                "pollution_tech_mult": Quantity(1.0, "dimensionless"),
+                "agriculture_tech_mult": Quantity(1.0, "dimensionless"),
+                "tech_cost_fraction": Quantity(0.0, "dimensionless"),
+            }
 
         _io = inputs.get(
             "industrial_output", Quantity(0.0, "industrial_output_units")
@@ -93,7 +105,7 @@ class AdaptiveTechnologySector:
             "food_per_capita", Quantity(1.0, "food_units_per_person")
         ).magnitude
 
-        # Perceived problem intensity drives R&D effort
+        # Perceived problem intensity drives R&D
         resource_pressure = max(0.0, 1.0 - nr_frac / self.nr_scarcity_threshold)
         pollution_pressure = max(0.0, pi / self.pollution_concern_threshold - 1.0)
         food_pressure = max(0.0, 1.0 - fpc / self.food_concern_threshold)
@@ -101,38 +113,26 @@ class AdaptiveTechnologySector:
             resource_pressure + pollution_pressure + food_pressure
         ) / 3.0
 
-        # R&D fraction of industrial output
         rd_fraction = self.rd_fraction_base * (1.0 + perceived_problems)
         tech_dev_rate = table_lookup(rd_fraction, _TECH_DEV_X, _TECH_DEV_Y)
 
-        # Technology development (with delay and depreciation)
         tech_investment = tech_dev_rate / max(self.tech_delay, 1.0)
-        tech_depreciation = tech * self.tech_depreciation
-        d_tech = tech_investment - tech_depreciation
+        tech_dep = tech * self.tech_depreciation
+        d_tech = tech_investment - tech_dep
 
-        # Technology cost as fraction of IO (diminishing returns)
         tech_cost_fraction = table_lookup(tech, _TECH_COST_X, _TECH_COST_Y)
-        tech_cost_fraction_out = rd_fraction * tech_cost_fraction
+        tech_cost_out = rd_fraction * tech_cost_fraction
 
-        # Technology multipliers applied to other sectors
         resource_tech_mult = table_lookup(tech, _RES_TECH_X, _RES_TECH_Y)
         pollution_tech_mult = table_lookup(tech, _POL_TECH_X, _POL_TECH_Y)
         agriculture_tech_mult = table_lookup(tech, _AG_TECH_X, _AG_TECH_Y)
 
         return {
             "d_TECH": Quantity(d_tech, "dimensionless"),
-            "resource_tech_mult": Quantity(
-                resource_tech_mult, "dimensionless"
-            ),
-            "pollution_tech_mult": Quantity(
-                pollution_tech_mult, "dimensionless"
-            ),
-            "agriculture_tech_mult": Quantity(
-                agriculture_tech_mult, "dimensionless"
-            ),
-            "tech_cost_fraction": Quantity(
-                tech_cost_fraction_out, "dimensionless"
-            ),
+            "resource_tech_mult": Quantity(resource_tech_mult, "dimensionless"),
+            "pollution_tech_mult": Quantity(pollution_tech_mult, "dimensionless"),
+            "agriculture_tech_mult": Quantity(agriculture_tech_mult, "dimensionless"),
+            "tech_cost_fraction": Quantity(tech_cost_out, "dimensionless"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -157,11 +157,12 @@ class AdaptiveTechnologySector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": ValidationStatus.REFERENCE_MATCHED,
-            "equation_source": EquationSource.MEADOWS_SPEC,
+            "validation_status": ValidationStatus.EXPERIMENTAL,
+            "equation_source": EquationSource.EMPIRICAL_FIT,
             "world7_alignment": WORLD7Alignment.NONE,
             "approximations": [
-                "Aggregated technology index",
+                "Unified technology index (W3-03 uses 3 separate stocks: RCT, PPT, LYT)",
+                "Inactive before POLICY_YEAR (default 4000 = base run)",
                 "Fixed implementation delay",
                 "Diminishing returns via table functions",
             ],
@@ -169,6 +170,7 @@ class AdaptiveTechnologySector:
                 "rd_fraction_base",
                 "tech_delay",
                 "tech_depreciation",
+                "policy_year",
                 "nr_scarcity_threshold",
                 "pollution_concern_threshold",
                 "food_concern_threshold",

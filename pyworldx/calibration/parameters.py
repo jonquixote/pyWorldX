@@ -3,6 +3,8 @@
 Every free parameter entry includes: name, default, bounds, units,
 sector owner, rationale, empirical anchor, IDENTIFIABILITY_RISK flag,
 and scenario mutability flag.
+
+All defaults calibrated to wrld3-03.mdl (Vensim, September 29 2005).
 """
 
 from __future__ import annotations
@@ -171,8 +173,7 @@ class ParameterRegistry:
 def build_world3_parameter_registry() -> ParameterRegistry:
     """Build the canonical World3-03 parameter registry.
 
-    Every free parameter from the 5 sectors is registered with bounds,
-    units, rationale, and identifiability risk flags.
+    All defaults from wrld3-03.mdl unless noted as pyWorldX approximation.
     """
     reg = ParameterRegistry()
 
@@ -183,8 +184,7 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(0.02, 0.06),
         units="1/year",
         sector_owner="population",
-        rationale="World3-03 default crude birth rate",
-        empirical_anchor="Meadows et al. 1972",
+        rationale="pyWorldX approximation: peak CBR at low IOPC",
     ))
     reg.register(ParameterEntry(
         name="population.cdr_base",
@@ -192,27 +192,17 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(0.01, 0.05),
         units="1/year",
         sector_owner="population",
-        rationale="World3-03 default crude death rate",
-        empirical_anchor="Meadows et al. 1972",
+        rationale="pyWorldX approximation: base CDR",
     ))
     reg.register(ParameterEntry(
-        name="population.base_life_expectancy",
-        default=32.0,
-        bounds=(25.0, 45.0),
-        units="years",
+        name="population.initial_population",
+        default=1.65e9,
+        bounds=(1.5e9, 1.8e9),
+        units="persons",
         sector_owner="population",
-        rationale="1900 baseline life expectancy",
-        empirical_anchor="Historical data",
-    ))
-    reg.register(ParameterEntry(
-        name="population.food_le_multiplier",
-        default=10.0,
-        bounds=(5.0, 20.0),
-        units="years",
-        sector_owner="population",
-        rationale="Life expectancy gain from adequate nutrition",
-        identifiability_risk=IdentifiabilityRisk.MEDIUM,
-        id_risk_rationale="Sensitive to food_per_capita normalization",
+        rationale="W3-03 total initial population (sum of 4 cohorts)",
+        empirical_anchor="wrld3-03.mdl: P1+P2+P3+P4",
+        scenario_mutable=False,
     ))
 
     # ── Capital sector ───────────────────────────────────────────────
@@ -222,8 +212,8 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(1e11, 5e11),
         units="capital_units",
         sector_owner="capital",
-        rationale="World3-03 1900 industrial capital",
-        empirical_anchor="Meadows et al. 1972",
+        rationale="W3-03 1900 industrial capital",
+        empirical_anchor="wrld3-03.mdl",
         scenario_mutable=False,
     ))
     reg.register(ParameterEntry(
@@ -232,17 +222,28 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(1.5, 6.0),
         units="years",
         sector_owner="capital",
-        rationale="Industrial capital-output ratio",
+        rationale="W3-03 ICOR1 = 3.0",
+        empirical_anchor="wrld3-03.mdl",
         identifiability_risk=IdentifiabilityRisk.HIGH,
         id_risk_rationale="Large recalibrations in literature (2.5-5.0)",
     ))
     reg.register(ParameterEntry(
-        name="capital.ic_depreciation_rate",
-        default=0.05,
-        bounds=(0.02, 0.10),
-        units="1/year",
+        name="capital.alic",
+        default=14.0,
+        bounds=(10.0, 20.0),
+        units="years",
         sector_owner="capital",
-        rationale="1/average lifetime (20 years default)",
+        rationale="W3-03 ALIC1 = 14 years (depreciation = 1/14 per year)",
+        empirical_anchor="wrld3-03.mdl",
+    ))
+    reg.register(ParameterEntry(
+        name="capital.alsc",
+        default=20.0,
+        bounds=(15.0, 30.0),
+        units="years",
+        sector_owner="capital",
+        rationale="W3-03 ALSC1 = 20 years",
+        empirical_anchor="wrld3-03.mdl",
     ))
 
     # ── Agriculture sector ───────────────────────────────────────────
@@ -252,18 +253,18 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(5e8, 1.5e9),
         units="hectares",
         sector_owner="agriculture",
-        rationale="World3-03 1900 arable land",
+        rationale="W3-03 1900 arable land",
+        empirical_anchor="wrld3-03.mdl",
         scenario_mutable=False,
     ))
     reg.register(ParameterEntry(
-        name="agriculture.land_yield_base",
+        name="agriculture.initial_land_fertility",
         default=600.0,
         bounds=(300.0, 1200.0),
-        units="food_units/hectare",
+        units="veg_equiv_kg/ha/yr",
         sector_owner="agriculture",
-        rationale="Base yield per hectare without inputs",
-        identifiability_risk=IdentifiabilityRisk.MEDIUM,
-        id_risk_rationale="Covaries with io_to_agriculture_fraction",
+        rationale="W3-03 ILF = 600 (inherent land fertility)",
+        empirical_anchor="wrld3-03.mdl",
     ))
     reg.register(ParameterEntry(
         name="agriculture.land_development_rate",
@@ -273,6 +274,15 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         sector_owner="agriculture",
         rationale="Fractional rate of arable land expansion",
     ))
+    reg.register(ParameterEntry(
+        name="agriculture.sfpc",
+        default=230.0,
+        bounds=(180.0, 300.0),
+        units="veg_equiv_kg/person/yr",
+        sector_owner="agriculture",
+        rationale="W3-03 SFPC = 230 (subsistence food per capita)",
+        empirical_anchor="wrld3-03.mdl",
+    ))
 
     # ── Resources sector ─────────────────────────────────────────────
     reg.register(ParameterEntry(
@@ -281,20 +291,18 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(5e11, 2e12),
         units="resource_units",
         sector_owner="resources",
-        rationale="World3-03 initial NR stock",
-        empirical_anchor="Meadows et al. 1972",
+        rationale="W3-03 NRI = 1e12",
+        empirical_anchor="wrld3-03.mdl",
         scenario_mutable=False,
     ))
     reg.register(ParameterEntry(
-        name="resources.pcnr_use_base",
-        default=1.0,
-        bounds=(0.1, 10.0),
-        units="resource_units/person",
+        name="resources.policy_year",
+        default=4000.0,
+        bounds=(1975.0, 4000.0),
+        units="year",
         sector_owner="resources",
-        rationale="Per-capita resource usage base multiplier",
-        identifiability_risk=IdentifiabilityRisk.HIGH,
-        id_risk_rationale="Flat-plateau in profile likelihood; "
-        "covaries with PCRUM table shape",
+        rationale="W3-03 POLICY_YEAR (4000 = base run, inactive)",
+        scenario_mutable=True,
     ))
 
     # ── Pollution sector ─────────────────────────────────────────────
@@ -304,26 +312,27 @@ def build_world3_parameter_registry() -> ParameterRegistry:
         bounds=(1e7, 1e8),
         units="pollution_units",
         sector_owner="pollution",
-        rationale="1900 persistent pollution level",
+        rationale="W3-03 1900 persistent pollution level",
+        empirical_anchor="wrld3-03.mdl",
         scenario_mutable=False,
     ))
     reg.register(ParameterEntry(
-        name="pollution.base_absorption_time",
-        default=20.0,
-        bounds=(5.0, 50.0),
+        name="pollution.ahl70",
+        default=1.5,
+        bounds=(0.5, 5.0),
         units="years",
         sector_owner="pollution",
-        rationale="Base pollution absorption time constant",
-        identifiability_risk=IdentifiabilityRisk.MEDIUM,
-        id_risk_rationale="Slow-state parameter with weak obs leverage",
+        rationale="W3-03 AHL70 = 1.5 years (absorption half-life in 1970)",
+        empirical_anchor="wrld3-03.mdl",
     ))
     reg.register(ParameterEntry(
-        name="pollution.industrial_pollution_intensity",
-        default=0.01,
-        bounds=(0.001, 0.05),
-        units="dimensionless",
+        name="pollution.pptd",
+        default=20.0,
+        bounds=(10.0, 40.0),
+        units="years",
         sector_owner="pollution",
-        rationale="Fraction of IO generating persistent pollution",
+        rationale="W3-03 PPTD = 20 years (pollution transmission delay)",
+        empirical_anchor="wrld3-03.mdl",
     ))
 
     return reg

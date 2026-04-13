@@ -177,7 +177,7 @@ def capital_reallocation_to_maintenance() -> Scenario:
         description="Capital reallocation: lower depreciation through maintenance",
         start_year=1900,
         end_year=2100,
-        parameter_overrides={"capital.ic_depreciation_rate": 0.03},
+        parameter_overrides={"capital.alic": 33.0},  # longer life = lower depreciation
         tags=["capital", "maintenance"],
     )
 

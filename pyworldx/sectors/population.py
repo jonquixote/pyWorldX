@@ -1,12 +1,21 @@
-"""World3-03 Population sector.
+"""World3-03 Population sector (simplified 1-level aggregation).
 
-Simplified 1-level population model based on World3-03:
-  dPOP/dt = births - deaths
-  births  = POP * cbr(food_per_capita, industrial_output_per_capita)
-  deaths  = POP * cdr(life_expectancy)
-  le      = f(pollution_index, food_per_capita, service_per_capita, crowding)
+Calibrated to wrld3-03.mdl (Vensim, September 29 2005).
 
-Uses table functions from Meadows et al. (1974/2004).
+This is a simplified 1-level population model. The full W3-03 uses
+4 age cohorts (0-14, 15-44, 45-64, 65+) with separate mortality
+and fertility chains. This approximation keeps the simplified CBR/CDR
+approach but uses correct W3-03 life-expectancy multiplier tables.
+
+Key W3-03 corrections:
+  - LMHS1/LMHS2 switching at t=1940 (was single blended table)
+  - LMFT and LMPP tables already matched W3-03
+  - Normal life expectancy = 28 years (LEN)
+
+Note: The CBR and DFS tables are pyWorldX approximations.
+W3-03 computes births from total_fertility * reproductive_pop,
+which requires the 4-cohort structure. The simplified CBR(IOPC)
+approach produces qualitatively similar dynamics.
 """
 
 from __future__ import annotations
@@ -16,39 +25,47 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
 
-# ── Table functions (World3-03 standard) ─────────────────────────────
+# ── W3-03 canonical tables ────────────────────────────────────────────
 
-# Lifetime multiplier from food (table LMFT)
+# Lifetime multiplier from food: LMFT(FPC/SFPC)
+# MDL: matches W3-03
 _LMFT_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
 _LMFT_Y = (0.0, 1.0, 1.43, 1.5, 1.5, 1.5)
 
-# Lifetime multiplier from health services (table LMHST)
-_LMHS_X = (0.0, 20.0, 40.0, 60.0, 80.0, 100.0)
-_LMHS_Y = (1.0, 1.4, 1.6, 1.8, 1.95, 2.0)
+# Lifetime multiplier from health services: LMHS1 (before 1940)
+# MDL: LMHS1T  X = effective health services per capita
+_LMHS1_X = (0.0, 20.0, 40.0, 60.0, 80.0, 100.0)
+_LMHS1_Y = (1.0, 1.1, 1.4, 1.6, 1.7, 1.8)
 
-# Lifetime multiplier from persistent pollution (table LMPT)
+# Lifetime multiplier from health services: LMHS2 (after 1940)
+# MDL: LMHS2T  X = effective health services per capita
+_LMHS2_X = (0.0, 20.0, 40.0, 60.0, 80.0, 100.0)
+_LMHS2_Y = (1.0, 1.5, 1.9, 2.0, 2.0, 2.0)
+
+# Lifetime multiplier from persistent pollution: LMPT(PPOLX)
+# MDL: matches W3-03
 _LMPP_X = (0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0)
 _LMPP_Y = (1.0, 0.99, 0.97, 0.95, 0.90, 0.85, 0.75, 0.65, 0.55, 0.40, 0.20)
 
-# Crude birth rate from industrial output per capita
+# Crude birth rate from IOPC (pyWorldX approximation — not in W3-03)
 _CBR_X = (0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0)
 _CBR_Y = (0.04, 0.035, 0.030, 0.025, 0.020, 0.017, 0.015, 0.014, 0.013)
 
-# Desired family size from industrial output per capita
-_DFS_X = (0.0, 200.0, 400.0, 600.0, 800.0)
-_DFS_Y = (0.035, 0.025, 0.020, 0.015, 0.012)
+# ── W3-03 constants ───────────────────────────────────────────────────
 
-# Normal life expectancy
-_NORMAL_LE = 28.0  # years, base life expectancy
+_LEN = 28.0          # normal life expectancy (years)
+_LMHS_SWITCH = 1940  # year to switch from LMHS1 to LMHS2
+_POP0 = 1.65e9       # initial population (1900)
 
 
 class PopulationSector:
     """World3-03 population sector (simplified 1-level aggregation).
 
     Stocks: POP (total population)
-    Reads: food_per_capita, industrial_output, pollution_index,
-           service_output_per_capita
-    Writes: POP, birth_rate, death_rate, life_expectancy
+    Reads:  food_per_capita, industrial_output, pollution_index,
+            service_output_per_capita
+    Writes: POP, birth_rate, death_rate, life_expectancy,
+            industrial_output_per_capita
     """
 
     name = "population"
@@ -56,7 +73,7 @@ class PopulationSector:
     timestep_hint: float | None = None
 
     # Parameters
-    initial_population: float = 1.65e9  # 1900 population
+    initial_population: float = _POP0
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {"POP": Quantity(self.initial_population, "persons")}
@@ -87,17 +104,23 @@ class PopulationSector:
         # Industrial output per capita
         iopc = io / max(pop, 1.0)
 
-        # Life expectancy multipliers
+        # ── Life expectancy multipliers ───────────────────────────────
         lmf = table_lookup(fpc, _LMFT_X, _LMFT_Y)
-        lmhs = table_lookup(spc, _LMHS_X, _LMHS_Y)
+
+        # LMHS switching at 1940 (W3-03 structural feature)
+        if t < _LMHS_SWITCH:
+            lmhs = table_lookup(spc, _LMHS1_X, _LMHS1_Y)
+        else:
+            lmhs = table_lookup(spc, _LMHS2_X, _LMHS2_Y)
+
         lmpp = table_lookup(pi, _LMPP_X, _LMPP_Y)
 
-        life_expectancy = _NORMAL_LE * lmf * lmhs * lmpp
+        life_expectancy = _LEN * lmf * lmhs * lmpp
 
-        # Crude death rate
+        # ── Crude death rate ──────────────────────────────────────────
         cdr = 1.0 / max(life_expectancy, 1.0)
 
-        # Crude birth rate from iopc
+        # ── Crude birth rate (pyWorldX approximation) ─────────────────
         cbr = table_lookup(iopc, _CBR_X, _CBR_Y)
 
         # Flows
@@ -136,10 +159,14 @@ class PopulationSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "validation_status": ValidationStatus.EMPIRICALLY_ANCHORED,
             "equation_source": EquationSource.MEADOWS_SPEC,
             "world7_alignment": WORLD7Alignment.NONE,
-            "approximations": ["1-level population aggregation"],
+            "approximations": [
+                "1-level population (W3-03 uses 4 age cohorts)",
+                "CBR from IOPC table (W3-03 uses total fertility chain)",
+                "LMHS1/LMHS2 switching at 1940 implemented",
+            ],
             "free_parameters": ["initial_population"],
             "conservation_groups": ["population_mass"],
             "observables": [

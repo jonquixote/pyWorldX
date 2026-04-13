@@ -1,8 +1,18 @@
 """World3-03 Non-Renewable Resources sector.
 
-  dNR/dt = -extraction_rate
-  extraction_rate = POP * pcnr_use * f(industrial_output_per_capita)
-  nr_fraction_remaining = NR / NR_initial
+Calibrated to wrld3-03.mdl (Vensim, September 29 2005).
+
+Stocks: NR (nonrenewable resources)
+Flows:  NRUR (nonrenewable resource usage rate)
+Key auxiliaries: PCRUM, FCAOR, NRUF, NRFR
+
+  dNR/dt  = -NRUR
+  NRUR    = POP * PCRUM(IOPC) * NRUF
+  NRFR    = NR / NRI
+  FCAOR   = clip(FCAOR2, FCAOR1, t, FCAOR_SWITCH_TIME)(NRFR)
+
+Resource Conservation Technology (RCT) is embedded here per W3-03.
+In the base run (POLICY_YEAR=4000) it stays inert (NRUF=1).
 """
 
 from __future__ import annotations
@@ -12,22 +22,37 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
 
-# Per-capita resource usage multiplier from iopc
-# X-axis scaled to match model's actual iopc values (~42 at t=0)
-_PCRUM_X = (0.0, 10.0, 20.0, 40.0, 60.0, 80.0, 100.0, 150.0)
-_PCRUM_Y = (0.0, 0.85, 2.6, 4.4, 5.4, 6.2, 6.8, 7.0)
+# ── W3-03 canonical tables ────────────────────────────────────────────
 
-# Resource fraction cost effect on capital
-_FCAOR_X = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
-_FCAOR_Y = (1.0, 0.9, 0.7, 0.5, 0.3, 0.15, 0.08, 0.05, 0.03, 0.02, 0.01)
+# Per-capita resource usage multiplier: PCRUM(IOPC)
+# MDL: PCRUM#130.1  X=IOPC ($/person/year)
+_PCRUM_X = (0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0)
+_PCRUM_Y = (0.0, 0.85, 2.6, 3.4, 3.8, 4.1, 4.4, 4.7, 5.0)
+
+# Fraction of capital allocated to obtaining resources: FCAOR1(NRFR)
+# MDL: FCAOR1#136.1  X=NR fraction remaining (0..1)
+_FCAOR1_X = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+_FCAOR1_Y = (1.0, 0.9, 0.7, 0.5, 0.2, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05)
+
+# FCAOR2: post-policy-year table (more aggressive early conservation)
+# MDL: FCAOR2#136.2
+_FCAOR2_X = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+_FCAOR2_Y = (1.0, 0.2, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05)
+
+# ── W3-03 constants ───────────────────────────────────────────────────
+
+_NRI_DEFAULT = 1.0e12       # initial NR stock (resource units)
+_POLICY_YEAR = 4000         # technology policy year (inactive in base run)
+_FCAOR_SWITCH_TIME = 4000   # FCAOR table switch time (inactive in base run)
+_NRUF1 = 1.0               # NR usage factor before policy year
 
 
 class ResourcesSector:
     """World3-03 Non-Renewable Resources sector.
 
     Stocks: NR (nonrenewable resource stock)
-    Reads: POP, industrial_output
-    Writes: NR, extraction_rate, nr_fraction_remaining, resource_use_factor
+    Reads:  POP, industrial_output_per_capita
+    Writes: NR, extraction_rate, nr_fraction_remaining, fcaor, nrur
     """
 
     name = "resources"
@@ -35,8 +60,9 @@ class ResourcesSector:
     timestep_hint: float | None = 0.25  # sub-stepped at 4:1
 
     # Parameters
-    initial_nr: float = 1.0e12  # resource units (1900)
-    pcnr_use_base: float = 1.0  # per-capita resource usage base
+    initial_nr: float = _NRI_DEFAULT
+    policy_year: float = _POLICY_YEAR
+    fcaor_switch_time: float = _FCAOR_SWITCH_TIME
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {"NR": Quantity(self.initial_nr, "resource_units")}
@@ -54,39 +80,57 @@ class ResourcesSector:
         io = inputs.get(
             "industrial_output", Quantity(0.0, "industrial_output_units")
         ).magnitude
+        iopc = inputs.get(
+            "industrial_output_per_capita",
+            Quantity(io / max(pop, 1.0), "industrial_output_units"),
+        ).magnitude
 
-        iopc = io / max(pop, 1.0)
-
-        # Per-capita resource usage rate
+        # Per-capita resource usage rate: PCRUM(IOPC)
         pcrum = table_lookup(iopc, _PCRUM_X, _PCRUM_Y)
-        extraction_rate = pop * pcrum * self.pcnr_use_base
+
+        # NR usage factor (NRUF): 1.0 in base run, technology-driven after policy year
+        # In base run POLICY_YEAR=4000, so NRUF=NRUF1=1.0 always
+        if t >= self.policy_year:
+            # Post-policy: NRUF2 would come from SMOOTH3(RCT, TDD)
+            # Simplified: use 1.0 (full RCT system requires separate stock integration)
+            nruf = _NRUF1
+        else:
+            nruf = _NRUF1
+
+        # NR usage rate
+        nrur = pop * pcrum * nruf
 
         # Don't extract more than available
-        extraction_rate = min(extraction_rate, max(nr, 0.0) * 10.0)
+        nrur = min(nrur, max(nr, 0.0) / max(ctx.master_dt, 0.0625))
 
         # Fraction remaining
         nrfr = nr / self.initial_nr
 
-        # Resource cost factor (fed back to capital sector)
-        resource_use_factor = table_lookup(nrfr, _FCAOR_X, _FCAOR_Y)
+        # FCAOR: fraction of capital allocated to obtaining resources
+        if t >= self.fcaor_switch_time:
+            fcaor = table_lookup(nrfr, _FCAOR2_X, _FCAOR2_Y)
+        else:
+            fcaor = table_lookup(nrfr, _FCAOR1_X, _FCAOR1_Y)
 
         return {
-            "d_NR": Quantity(-extraction_rate, "resource_units"),
-            "extraction_rate": Quantity(extraction_rate, "resource_units"),
+            "d_NR": Quantity(-nrur, "resource_units"),
+            "extraction_rate": Quantity(nrur, "resource_units"),
+            "nrur": Quantity(nrur, "resource_units"),
             "nr_fraction_remaining": Quantity(nrfr, "dimensionless"),
-            "resource_use_factor": Quantity(
-                resource_use_factor, "dimensionless"
-            ),
+            "fcaor": Quantity(fcaor, "dimensionless"),
+            "resource_use_factor": Quantity(fcaor, "dimensionless"),
         }
 
     def declares_reads(self) -> list[str]:
-        return ["POP", "industrial_output"]
+        return ["POP", "industrial_output", "industrial_output_per_capita"]
 
     def declares_writes(self) -> list[str]:
         return [
             "NR",
             "extraction_rate",
+            "nrur",
             "nr_fraction_remaining",
+            "fcaor",
             "resource_use_factor",
         ]
 
@@ -95,16 +139,21 @@ class ResourcesSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "validation_status": ValidationStatus.EMPIRICALLY_ANCHORED,
             "equation_source": EquationSource.MEADOWS_SPEC,
             "world7_alignment": WORLD7Alignment.NONE,
-            "approximations": ["simplified extraction table"],
-            "free_parameters": ["initial_nr", "pcnr_use_base"],
+            "approximations": [
+                "NRUF simplified (RCT stock not yet integrated as SMOOTH3)",
+                "FCAOR1/FCAOR2 switching implemented",
+            ],
+            "free_parameters": ["initial_nr", "policy_year"],
             "conservation_groups": ["nonrenewable_resource_mass"],
             "observables": [
                 "NR",
                 "extraction_rate",
+                "nrur",
                 "nr_fraction_remaining",
+                "fcaor",
             ],
             "unit_notes": "resource_units",
             "preferred_substep_integrator": "rk4",

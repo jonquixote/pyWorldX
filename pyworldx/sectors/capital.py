@@ -1,12 +1,20 @@
 """World3-03 Capital sector.
 
-Two capital stocks (industrial and service) with investment and
-depreciation flows driven by industrial output allocation.
+Calibrated to wrld3-03.mdl (Vensim, September 29 2005).
 
-  dIC/dt = ic_investment - ic_depreciation
-  dSC/dt = sc_investment - sc_depreciation
-  industrial_output = icor_adjusted * IC
-  service_output = scor * SC
+Stocks: IC (industrial capital), SC (service capital)
+Flows:  IC investment/depreciation, SC investment/depreciation
+
+  IO   = IC * (1 - FCAOR) * CUF / ICOR
+  SO   = SC * CUF / SCOR
+  FIOAI = 1 - FIOAA - FIOAS - FIOAC   (residual)
+
+Key W3-03 corrections:
+  - ALIC1 = 14 years  ->  depreciation = 1/14
+  - IO includes (1-FCAOR) resource cost feedback
+  - FIOAS table corrected to W3-03 values
+  - FIOAI is a residual, not a separate table
+  - FIOAC (consumption fraction) via ISOPC table
 """
 
 from __future__ import annotations
@@ -16,38 +24,57 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
 
-# Fraction of IO allocated to investment (table FIOAI)
-_FIOAI_X = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0)
-_FIOAI_Y = (0.60, 0.55, 0.50, 0.45, 0.40, 0.35, 0.30)
+# ── W3-03 canonical tables ────────────────────────────────────────────
 
-# Fraction of IO to services (table FIOAS)
+# Fraction of IO to services: FIOAS1(SOPC/ISOPC)
+# MDL: FIOAS1  X = SOPC/ISOPC ratio
 _FIOAS_X = (0.0, 0.5, 1.0, 1.5, 2.0)
-_FIOAS_Y = (0.30, 0.25, 0.22, 0.20, 0.18)
+_FIOAS_Y = (0.3, 0.2, 0.1, 0.05, 0.0)
 
-# ICOR multiplier from pollution (table)
-_ICOR_PP_X = (0.0, 10.0, 20.0, 30.0, 40.0, 50.0)
-_ICOR_PP_Y = (1.0, 0.95, 0.85, 0.70, 0.50, 0.30)
+# Fraction of IO to agriculture: FIOAA1(FPC/SFPC)
+# MDL: FIOAA1  X = food_per_capita / subsistence_fpc
+_FIOAA_X = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5)
+_FIOAA_Y = (0.4, 0.2, 0.1, 0.025, 0.0, 0.0)
+
+# Fraction of IO to consumption: FIOACV(IOPC/IOPC_DESIRED)
+# MDL: FIOACV  (indicator autonomous consumption)
+_FIOACV_X = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
+_FIOACV_Y = (0.3, 0.32, 0.34, 0.36, 0.38, 0.43, 0.73, 0.77, 0.81, 0.82, 0.83)
+
+# ── W3-03 constants ───────────────────────────────────────────────────
+
+_IC0 = 2.1e11       # initial industrial capital (1900)
+_SC0 = 1.44e11      # initial service capital (1900)
+_ICOR1 = 3.0        # industrial capital-output ratio (years)
+_SCOR1 = 1.0        # service capital-output ratio (years)
+_ALIC1 = 14.0       # average life of industrial capital (years)
+_ALSC1 = 20.0       # average life of service capital (years)
+_CUF = 1.0          # capacity utilization fraction (simplified; full CUF needs jobs)
+_SFPC = 230.0       # subsistence food per capita (kg veg equiv / person / year)
+_ISOPC = 120.0      # indicated service output per capita reference
 
 
 class CapitalSector:
     """World3-03 Capital sector.
 
     Stocks: IC (industrial capital), SC (service capital)
-    Reads: extraction_rate, pollution_index, POP, pollution_efficiency
-    Writes: IC, SC, industrial_output, service_output, service_output_per_capita
+    Reads:  fcaor, POP, food_per_capita, service_output_per_capita
+    Writes: IC, SC, industrial_output, industrial_output_per_capita,
+            service_output, service_output_per_capita,
+            frac_io_to_industry, frac_io_to_services, frac_io_to_agriculture
     """
 
     name = "capital"
     version = "3.03"
     timestep_hint: float | None = None
 
-    # Parameters (World3-03)
-    initial_ic: float = 2.1e11  # industrial capital ($/1900)
-    initial_sc: float = 1.44e11  # service capital
-    icor: float = 3.0  # industrial capital-output ratio (years)
-    scor: float = 1.0  # service capital-output ratio (years)
-    ic_depreciation_rate: float = 0.05  # 1/average_lifetime (20 yrs)
-    sc_depreciation_rate: float = 0.05
+    # Parameters (W3-03)
+    initial_ic: float = _IC0
+    initial_sc: float = _SC0
+    icor: float = _ICOR1
+    scor: float = _SCOR1
+    alic: float = _ALIC1
+    alsc: float = _ALSC1
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -66,59 +93,69 @@ class CapitalSector:
         sc = stocks["SC"].magnitude
 
         # Read inputs
-        _er = inputs.get(
-            "extraction_rate", Quantity(1.0, "resource_units")
-        ).magnitude
-        pi = inputs.get(
-            "pollution_index", Quantity(0.0, "dimensionless")
-        ).magnitude
         pop = inputs.get("POP", Quantity(1.65e9, "persons")).magnitude
-        pe = inputs.get(
-            "pollution_efficiency", Quantity(1.0, "dimensionless")
+        fcaor = inputs.get(
+            "fcaor", Quantity(0.05, "dimensionless")
+        ).magnitude
+        fpc = inputs.get(
+            "food_per_capita", Quantity(230.0, "food_units_per_person")
+        ).magnitude
+        sopc_prev = inputs.get(
+            "service_output_per_capita", Quantity(0.0, "service_output_units")
         ).magnitude
 
-        # ICOR adjustment for pollution
-        icor_mult = table_lookup(pi, _ICOR_PP_X, _ICOR_PP_Y)
+        # ── Industrial output ─────────────────────────────────────────
+        # IO = IC * (1 - FCAOR) * CUF / ICOR
+        io = ic * (1.0 - fcaor) * _CUF / self.icor
+        iopc = io / max(pop, 1.0)
 
-        # Industrial output = IC / ICOR * pollution_efficiency * icor_mult
-        effective_icor = self.icor / max(icor_mult * pe, 0.01)
-        industrial_output = ic / effective_icor
+        # ── Service output ────────────────────────────────────────────
+        so = sc * _CUF / self.scor
+        sopc = so / max(pop, 1.0)
 
-        # Service output
-        service_output = sc / self.scor
-        spc = service_output / max(pop, 1.0)
+        # ── IO allocation fractions ───────────────────────────────────
+        # FIOAA: agriculture allocation based on food adequacy
+        fpc_ratio = fpc / _SFPC
+        fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
 
-        # Food allocation fraction (simplified — sent to agriculture)
-        fpc_indicator = industrial_output / max(pop, 1.0)
-        fioai = table_lookup(fpc_indicator / 200.0, _FIOAI_X, _FIOAI_Y)
-        fioas = table_lookup(fpc_indicator / 200.0, _FIOAS_X, _FIOAS_Y)
+        # FIOAS: services allocation based on service adequacy
+        sopc_ratio = sopc / _ISOPC
+        fioas = table_lookup(sopc_ratio, _FIOAS_X, _FIOAS_Y)
 
-        # Investment flows
-        ic_investment = industrial_output * fioai
-        sc_investment = industrial_output * fioas
-        ic_depreciation = ic * self.ic_depreciation_rate
-        sc_depreciation = sc * self.sc_depreciation_rate
+        # FIOAC: consumption allocation based on income level
+        iopc_ratio = iopc / 400.0  # normalize to reference IOPC
+        fioac = table_lookup(iopc_ratio, _FIOACV_X, _FIOACV_Y)
+
+        # FIOAI: industrial investment is the residual
+        fioai = max(1.0 - fioaa - fioas - fioac, 0.0)
+
+        # ── Investment and depreciation flows ─────────────────────────
+        ic_investment = io * fioai
+        sc_investment = io * fioas
+        ic_depreciation = ic / self.alic
+        sc_depreciation = sc / self.alsc
 
         return {
             "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
             "d_SC": Quantity(sc_investment - sc_depreciation, "capital_units"),
-            "industrial_output": Quantity(
-                industrial_output, "industrial_output_units"
+            "industrial_output": Quantity(io, "industrial_output_units"),
+            "industrial_output_per_capita": Quantity(
+                iopc, "industrial_output_units"
             ),
-            "service_output": Quantity(service_output, "service_output_units"),
-            "service_output_per_capita": Quantity(
-                spc, "service_output_units"
-            ),
+            "service_output": Quantity(so, "service_output_units"),
+            "service_output_per_capita": Quantity(sopc, "service_output_units"),
             "frac_io_to_industry": Quantity(fioai, "dimensionless"),
             "frac_io_to_services": Quantity(fioas, "dimensionless"),
+            "frac_io_to_agriculture": Quantity(fioaa, "dimensionless"),
+            "frac_io_to_consumption": Quantity(fioac, "dimensionless"),
         }
 
     def declares_reads(self) -> list[str]:
         return [
-            "extraction_rate",
-            "pollution_index",
+            "fcaor",
             "POP",
-            "pollution_efficiency",
+            "food_per_capita",
+            "service_output_per_capita",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -126,14 +163,16 @@ class CapitalSector:
             "IC",
             "SC",
             "industrial_output",
+            "industrial_output_per_capita",
             "service_output",
             "service_output_per_capita",
             "frac_io_to_industry",
             "frac_io_to_services",
+            "frac_io_to_agriculture",
+            "frac_io_to_consumption",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
-        """Capital<->Pollution algebraic loop (pollution_efficiency ↔ industrial_output)."""
         return [
             {
                 "name": "capital_pollution_loop",
@@ -151,12 +190,22 @@ class CapitalSector:
 
     def metadata(self) -> dict[str, object]:
         return {
-            "validation_status": ValidationStatus.REFERENCE_MATCHED,
+            "validation_status": ValidationStatus.EMPIRICALLY_ANCHORED,
             "equation_source": EquationSource.MEADOWS_SPEC,
             "world7_alignment": WORLD7Alignment.NONE,
-            "approximations": ["simplified ICOR table"],
-            "free_parameters": ["icor", "scor", "ic_depreciation_rate"],
+            "approximations": [
+                "CUF fixed at 1.0 (full CUF requires jobs subsector)",
+                "FIOAC table simplified normalization",
+            ],
+            "free_parameters": ["icor", "scor", "alic", "alsc"],
             "conservation_groups": [],
-            "observables": ["IC", "SC", "industrial_output", "service_output"],
+            "observables": [
+                "IC",
+                "SC",
+                "industrial_output",
+                "industrial_output_per_capita",
+                "service_output",
+                "service_output_per_capita",
+            ],
             "unit_notes": "capital_units, industrial_output_units",
         }

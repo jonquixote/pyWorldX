@@ -1,4 +1,4 @@
-"""Tests for the adaptive technology sector."""
+"""Tests for the adaptive technology sector (pyWorldX extension)."""
 
 from __future__ import annotations
 
@@ -52,12 +52,26 @@ class TestAdaptiveTechCompute:
         result = sector.compute(0.0, stocks, inputs, ctx)
         assert "d_TECH" in result
 
-    def test_tech_multipliers_ge_one(self) -> None:
+    def test_inert_before_policy_year(self) -> None:
+        """Before POLICY_YEAR (default 4000), all multipliers = 1.0."""
         sector = AdaptiveTechnologySector()
         ctx = _make_ctx()
         stocks = sector.init_stocks(ctx)
         inputs = _default_inputs()
-        result = sector.compute(0.0, stocks, inputs, ctx)
+        result = sector.compute(2000.0, stocks, inputs, ctx)
+        assert result["resource_tech_mult"].magnitude == 1.0
+        assert result["pollution_tech_mult"].magnitude == 1.0
+        assert result["agriculture_tech_mult"].magnitude == 1.0
+        assert result["d_TECH"].magnitude == 0.0
+
+    def test_active_after_policy_year(self) -> None:
+        """After POLICY_YEAR, tech multipliers should be >= 1.0."""
+        sector = AdaptiveTechnologySector()
+        sector.policy_year = 2000.0  # activate early
+        ctx = _make_ctx()
+        stocks = sector.init_stocks(ctx)
+        inputs = _default_inputs()
+        result = sector.compute(2050.0, stocks, inputs, ctx)
         assert result["resource_tech_mult"].magnitude >= 1.0
         assert result["pollution_tech_mult"].magnitude >= 1.0
         assert result["agriculture_tech_mult"].magnitude >= 1.0
@@ -88,6 +102,13 @@ class TestAdaptiveTechMetadata:
         ]
         for field in required:
             assert field in meta, f"Missing metadata field: {field}"
+
+    def test_marked_as_experimental(self) -> None:
+        """Should be EXPERIMENTAL, not REFERENCE_MATCHED."""
+        from pyworldx.core.metadata import ValidationStatus
+        sector = AdaptiveTechnologySector()
+        meta = sector.metadata()
+        assert meta["validation_status"] == ValidationStatus.EXPERIMENTAL
 
     def test_declares_reads_and_writes(self) -> None:
         sector = AdaptiveTechnologySector()
