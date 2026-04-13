@@ -15,7 +15,9 @@ Key W3-03 corrections:
 Note: The CBR and DFS tables are pyWorldX approximations.
 W3-03 computes births from total_fertility * reproductive_pop,
 which requires the 4-cohort structure. The simplified CBR(IOPC)
-approach produces qualitatively similar dynamics.
+approach is augmented with fecundity multipliers from food shortage
+and life expectancy to approximate the collapse-phase fertility drop
+that W3-03 achieves via its 4-cohort reproductive mechanics.
 """
 
 from __future__ import annotations
@@ -51,11 +53,27 @@ _LMPP_Y = (1.0, 0.99, 0.97, 0.95, 0.90, 0.85, 0.75, 0.65, 0.55, 0.40, 0.20)
 _CBR_X = (0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0)
 _CBR_Y = (0.04, 0.035, 0.030, 0.025, 0.020, 0.017, 0.015, 0.014, 0.013)
 
+# Fecundity multiplier from food (pyWorldX approximation).
+# In W3-03, malnutrition affects fecundity via the reproductive fraction
+# and mortality shifting away from childbearing ages. This simplified table
+# approximates: when FPC < SFPC, fewer women can sustain pregnancy.
+# At FPC/SFPC=0 fecundity=0, at 0.5 it's 0.5, at 1.0+ it's 1.0.
+_FMF_X = (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0)
+_FMF_Y = (0.0, 0.2, 0.5, 0.8, 1.0, 1.0, 1.0)
+
+# Fecundity multiplier from life expectancy (pyWorldX approximation).
+# In W3-03, lower LE means higher infant mortality and fewer women
+# surviving to reproductive age. This proxy captures that: when LE is
+# very low, effective fecundity drops sharply.
+_FMLE_X = (20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
+_FMLE_Y = (0.2, 0.5, 0.75, 0.85, 0.95, 1.0, 1.0)
+
 # ── W3-03 constants ───────────────────────────────────────────────────
 
 _LEN = 28.0          # normal life expectancy (years)
 _LMHS_SWITCH = 1940  # year to switch from LMHS1 to LMHS2
 _POP0 = 1.65e9       # initial population (1900)
+_SFPC_REF = 230.0    # subsistence food per capita for fecundity calc
 
 
 class PopulationSector:
@@ -122,6 +140,12 @@ class PopulationSector:
 
         # ── Crude birth rate (pyWorldX approximation) ─────────────────
         cbr = table_lookup(iopc, _CBR_X, _CBR_Y)
+
+        # Fecundity multipliers — approximate W3-03 reproductive mechanics
+        fpc_ratio = fpc / _SFPC_REF
+        fm_food = table_lookup(fpc_ratio, _FMF_X, _FMF_Y)
+        fm_le = table_lookup(life_expectancy, _FMLE_X, _FMLE_Y)
+        cbr *= fm_food * fm_le
 
         # Flows
         births = pop * cbr

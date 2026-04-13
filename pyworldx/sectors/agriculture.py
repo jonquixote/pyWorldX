@@ -90,6 +90,9 @@ class AgricultureSector:
     land_development_rate: float = 0.005
     sfpc: float = _SFPC
 
+    # Internal state for SMOOTH3 on FPC (avoids allocation oscillation)
+    _smooth_fpc: float = _SFPC
+
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
             "AL": Quantity(self.initial_arable_land, "hectares"),
@@ -117,12 +120,15 @@ class AgricultureSector:
 
         iopc = io / max(pop, 1.0)
 
+        # ── Smoothed FPC for allocation decisions ────────────────────
+        # W3-03 uses SMOOTH2 on food ratio (~2yr delay). We use an EMA
+        # on the previous step's FPC to damp the FIOAA oscillation,
+        # then update the smooth with THIS step's actual FPC at the end.
+        smooth_tau = 2.0  # smoothing time constant (years)
+        alpha = min(ctx.master_dt / smooth_tau, 1.0)
+
         # ── Agricultural input allocation ─────────────────────────────
-        # Need food_per_capita from previous step for FIOAA; estimate it
-        fpc_est = inputs.get(
-            "food_per_capita", Quantity(self.sfpc, "food_units_per_person")
-        ).magnitude
-        fpc_ratio = fpc_est / self.sfpc
+        fpc_ratio = self._smooth_fpc / self.sfpc
         fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
 
         # Agricultural input
@@ -141,7 +147,11 @@ class AgricultureSector:
 
         # ── Food production ───────────────────────────────────────────
         food = al * land_yield * _LFH * (1.0 - _PL)
-        fpc = food / max(pop, 1.0)
+        fpc_raw = food / max(pop, 1.0)
+
+        # Update smooth with this step's actual FPC
+        self._smooth_fpc += alpha * (fpc_raw - self._smooth_fpc)
+        fpc = self._smooth_fpc
 
         # ── Land dynamics ─────────────────────────────────────────────
         remaining = max(self.potential_arable_land - al, 0.0)
