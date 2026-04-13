@@ -98,9 +98,6 @@ class PollutionSector:
         dl3 = stocks["PPDL3"].magnitude
 
         pop = inputs.get("POP", Quantity(1.65e9, "persons")).magnitude
-        io = inputs.get(
-            "industrial_output", Quantity(0.0, "industrial_output_units")
-        ).magnitude
         food = inputs.get("food", Quantity(0.0, "food_units")).magnitude
         al = inputs.get("AL", Quantity(0.9e9, "hectares")).magnitude
 

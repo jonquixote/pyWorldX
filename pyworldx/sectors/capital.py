@@ -100,10 +100,6 @@ class CapitalSector:
         fpc = inputs.get(
             "food_per_capita", Quantity(230.0, "food_units_per_person")
         ).magnitude
-        sopc_prev = inputs.get(
-            "service_output_per_capita", Quantity(0.0, "service_output_units")
-        ).magnitude
-
         # ── Industrial output ─────────────────────────────────────────
         # IO = IC * (1 - FCAOR) * CUF / ICOR
         io = ic * (1.0 - fcaor) * _CUF / self.icor
