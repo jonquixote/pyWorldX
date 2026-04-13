@@ -887,3 +887,224 @@ def normalize_pwt(df: pd.DataFrame) -> pd.DataFrame:
         result["source_variable"] = "pwt110"
     
     return result
+
+
+# ── FAOSTAT Historical Normalizer ──────────────────────────────────
+
+@register_normalizer("faostat_food_balance_historical")
+def normalize_faostat_historical(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT FBSH historical data (1961-2013).
+    
+    FBSH has different column structure than FBS.
+    Maps to same entities: food.supply.kcal_per_capita and population.total.
+    """
+    result = df.copy()
+    
+    # Standardize columns
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    
+    if "value" not in result.columns and "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"  # World only
+    
+    result["source_id"] = "faostat_food_balance_historical"
+    
+    return result
+
+
+# ── FAOSTAT OA Population Normalizer ───────────────────────────────
+
+@register_normalizer("faostat_oa_population")
+def normalize_faostat_oa(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT OA population data."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT RL Land Use Normalizer ──────────────────────────────────
+
+@register_normalizer("faostat_rl_land_use")
+def normalize_faostat_rl(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT RL land use data."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT MK Macro Normalizer ─────────────────────────────────────
+
+@register_normalizer("faostat_mk_macro")
+def normalize_faostat_mk(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT MK macro indicators data."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT TCL Trade Normalizer ───────────────────────────────────
+
+@register_normalizer("faostat_tcl_trade")
+def normalize_faostat_tcl(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT TCL trade data."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT CP Consumer Prices Normalizer ───────────────────────────
+
+@register_normalizer("faostat_cp_consumer_prices")
+def normalize_faostat_cp(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT CP consumer price indices."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT FS Food Security Normalizer ─────────────────────────────
+
+@register_normalizer("faostat_fs_food_security")
+def normalize_faostat_fs(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT FS food security indicators."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT PD Deflators Normalizer ─────────────────────────────────
+
+@register_normalizer("faostat_pd_deflators")
+def normalize_faostat_pd(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT PD deflators."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT RL Full Land Use Normalizer ─────────────────────────────
+
+@register_normalizer("faostat_rl_full")
+def normalize_faostat_rl_full(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT RL full land use data (1961-2023)."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT EM Emissions Normalizer ─────────────────────────────────
+
+@register_normalizer("faostat_em_emissions")
+def normalize_faostat_em(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT EM agrifood emissions indicators."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT GT Emissions Totals Normalizer ──────────────────────────
+
+@register_normalizer("faostat_gt_totals")
+def normalize_faostat_gt(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT GT agrifood emissions totals."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT GN Energy Normalizer ────────────────────────────────────
+
+@register_normalizer("faostat_gn_energy")
+def normalize_faostat_gn(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT GN energy use in agriculture."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT CB Non-Food Normalizer ──────────────────────────────────
+
+@register_normalizer("faostat_cb_nonfood")
+def normalize_faostat_cb(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT CB commodity balances (non-food)."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result
+
+
+# ── FAOSTAT CBH Non-Food Historical Normalizer ──────────────────────
+
+@register_normalizer("faostat_cbh_nonfood")
+def normalize_faostat_cbh(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize FAOSTAT CBH commodity balances historical (non-food)."""
+    result = df.copy()
+    if "year" not in result.columns and "year_code" in result.columns:
+        result["year"] = pd.to_numeric(result["year_code"], errors="coerce")
+    if "country_code" not in result.columns:
+        result["country_code"] = "WLD"
+    if "value" in result.columns:
+        result["value"] = pd.to_numeric(result["value"], errors="coerce")
+    return result

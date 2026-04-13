@@ -256,7 +256,544 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
             world_area_name="World",
         ),
     ],
-    
+    # ── FAOSTAT Historical (FBSH 1961-2013) ────────────────────
+    "faostat_food_balance_historical": [
+        EntityMapping(
+            entity="food.supply.kcal_per_capita",
+            year_col="year",
+            value_col="value",
+            unit="kcal_per_capita_per_day",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Food supply (kcal/capita/day)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="population.total",
+            year_col="year",
+            value_col="value",
+            unit="1000_persons",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Total Population - Both sexes",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT OA Population ──────────────────────────────────
+    "faostat_oa_population": [
+        EntityMapping(
+            entity="population.total",
+            year_col="year",
+            value_col="value",
+            unit="1000_persons",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Total Population - Both sexes",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT RL Land Use ────────────────────────────────────
+    "faostat_rl_land_use": [
+        EntityMapping(
+            entity="land.arable_hectares",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Arable land",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.cropland_hectares",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Cropland",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.agricultural_land",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agricultural land",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT MK Macro ───────────────────────────────────────
+    "faostat_mk_macro": [
+        EntityMapping(
+            entity="gdp.value_added_agriculture",
+            year_col="year",
+            value_col="value",
+            unit="current_USD",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Value Added (Agriculture, Forestry and Fishing)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="gdp.value_added_manufacturing",
+            year_col="year",
+            value_col="value",
+            unit="current_USD",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Value Added (Total Manufacturing)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+
+    # ── FAOSTAT TCL Trade ─────────────────────────────────────────
+    "faostat_tcl_trade": [
+        EntityMapping(
+            entity="trade.agricultural_exports",
+            year_col="year",
+            value_col="value",
+            unit="tonnes",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Export quantity",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Grand Total",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="trade.agricultural_imports",
+            year_col="year",
+            value_col="value",
+            unit="tonnes",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Import quantity",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Grand Total",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT CP Consumer Prices ────────────────────────────────
+    "faostat_cp_consumer_prices": [
+        EntityMapping(
+            entity="cpi.food",
+            year_col="year",
+            value_col="value",
+            unit="index_2015_100",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Consumer Prices, Food Indices (2015 = 100), median",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT FS Food Security ──────────────────────────────────
+    "faostat_fs_food_security": [
+        EntityMapping(
+            entity="food.security.prevalence_undernourishment",
+            year_col="year",
+            value_col="value",
+            unit="percent",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Prevalence of undernourishment (PoU) (%) - 3-year average",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="food.security.severe_food_insecurity",
+            year_col="year",
+            value_col="value",
+            unit="percent",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Prevalence of severe food insecurity (%)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT PD Deflators ──────────────────────────────────────
+    "faostat_pd_deflators": [
+        EntityMapping(
+            entity="deflator.agricultural_production",
+            year_col="year",
+            value_col="value",
+            unit="index_2015_100",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agricultural production price index (2015 = 100)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT RL Full Land Use (1961-2023) ──────────────────────
+    "faostat_rl_full": [
+        EntityMapping(
+            entity="land.arable_hectares",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Arable land",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.cropland_hectares",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Cropland",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.agricultural_land",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agricultural land",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.permanent_meadows_pastures",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Permanent meadows and pastures",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="land.forest_land",
+            year_col="year",
+            value_col="value",
+            unit="1000_ha",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Forest land",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT EM Agrifood Emissions ─────────────────────────────
+    "faostat_em_emissions": [
+        EntityMapping(
+            entity="emissions.agrifood_total",
+            year_col="year",
+            value_col="value",
+            unit="percent",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agrifood systems",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions Share (CO2eq) (AR5)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agrifood_per_capita",
+            year_col="year",
+            value_col="value",
+            unit="tonnes_CO2eq_per_capita",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agrifood systems",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions per capita",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT GT Emissions Totals ───────────────────────────────
+    "faostat_gt_totals": [
+        EntityMapping(
+            entity="emissions.agrifood_n2o_direct",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2eq",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agrifood systems",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Direct emissions (N2O)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agrifood_n2o_indirect",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2eq",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Agrifood systems",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Indirect emissions (N2O)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agrifood_enteric_fermentation",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2eq",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Enteric Fermentation",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions (CO2eq) (AR5)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agrifood_manure",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2eq",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Manure Management",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions (CO2eq) (AR5)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agrifood_rice",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2eq",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Rice Cultivation",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions (CO2eq) (AR5)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT GN Energy Use in Agriculture ──────────────────────
+    "faostat_gn_energy": [
+        EntityMapping(
+            entity="energy.use_agriculture",
+            year_col="year",
+            value_col="value",
+            unit="TJ",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Petroleum products",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Energy use in agriculture",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+        EntityMapping(
+            entity="emissions.agriculture_co2",
+            year_col="year",
+            value_col="value",
+            unit="kt_CO2",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "item",
+                    "value": "Petroleum products",
+                }),
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Emissions (CO2)",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT CB Non-Food ───────────────────────────────────────
+    "faostat_cb_nonfood": [
+        EntityMapping(
+            entity="trade.nonfood_production",
+            year_col="year",
+            value_col="value",
+            unit="tonnes",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Production",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+    # ── FAOSTAT CBH Non-Food Historical ───────────────────────────
+    "faostat_cbh_nonfood": [
+        EntityMapping(
+            entity="trade.nonfood_production_historical",
+            year_col="year",
+            value_col="value",
+            unit="tonnes",
+            transforms=[
+                TransformSpec("filter_rows", {
+                    "column": "element",
+                    "value": "Production",
+                }),
+            ],
+            country_filter="world",
+            world_country_code="WLD",
+            world_area_name="World",
+        ),
+    ],
+
     # ── UNDP HDR ────────────────────────────────────────────────
     "undp_hdr": [
         EntityMapping(

@@ -38,7 +38,9 @@ WORLD_AREA = "5000"
 DOMAIN_QUERIES = {
     "food_balance": {
         "domain": "FBS",
-        "name": "Food Balance Sheets",
+        "name": "Food Balance Sheets (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
         "queries": [
             # Food supply (kcal/capita/day) — element 664, all products (Grand Total)
             {"element": "664"},
@@ -46,20 +48,79 @@ DOMAIN_QUERIES = {
             {"item": "2501", "element": "511"},
         ],
     },
-    "production": {
-        "domain": "QCL",
-        "name": "Production: Crops and Livestock",
+    "food_balance_historical": {
+        "domain": "FBSH",
+        "name": "Food Balance Sheets Historical (1961-)",
+        "start_year": 1961,
+        "end_year": 2013,
         "queries": [
-            # Wheat production — item 15, element 5510
-            {"item": "15", "element": "5510"},
+            # Food supply (kcal/capita/day) — element 664
+            {"element": "664"},
+            # Population — element 511
+            {"element": "511"},
         ],
     },
-    "land_use": {
-        "domain": "RL",
-        "name": "Land Use",
+    "oa_population": {
+        "domain": "OA",
+        "name": "Annual Population (1961-)",
+        "start_year": 1961,
+        "end_year": 2023,
         "queries": [
-            # Arable land — item 4035, element 5111
-            {"item": "4035", "element": "5111"},
+            {"element": "511"},  # Total Population
+        ],
+    },
+    "rl_land_use": {
+        "domain": "RL",
+        "name": "Land Use (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
+        "queries": [
+            {"element": "5121"},  # Area
+        ],
+    },
+    "mk_macro": {
+        "domain": "MK",
+        "name": "Macro Indicators (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
+        "queries": [
+            {},  # All macro indicators
+        ],
+    },
+    "tcl_trade": {
+        "domain": "TCL",
+        "name": "Trade (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
+        "queries": [
+            {},  # All trade data
+        ],
+    },
+    "cp_consumer_prices": {
+        "domain": "CP",
+        "name": "Consumer Price Indices (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
+        "queries": [
+            {},  # All consumer prices
+        ],
+    },
+    "fs_food_security": {
+        "domain": "FS",
+        "name": "Food Security Indicators (2000-)",
+        "start_year": 2000,
+        "end_year": 2024,
+        "queries": [
+            {},  # All food security indicators
+        ],
+    },
+    "pd_deflators": {
+        "domain": "PD",
+        "name": "Deflators (2010-)",
+        "start_year": 2010,
+        "end_year": 2023,
+        "queries": [
+            {},  # All deflators
         ],
     },
 }
@@ -76,8 +137,8 @@ def _get_token(config: PipelineConfig) -> Optional[str]:
 def fetch_faostat(
     config: PipelineConfig,
     domain: str = "food_balance",
-    start_year: int = 1961,
-    end_year: int = 2024,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
 ) -> FetchResult:
     """Fetch FAOSTAT data via the new Bearer-token API.
 
@@ -86,8 +147,8 @@ def fetch_faostat(
     Args:
         config: Pipeline configuration.
         domain: Domain key from DOMAIN_QUERIES dict.
-        start_year: First year to fetch.
-        end_year: Last year to fetch.
+        start_year: First year to fetch (defaults to domain config).
+        end_year: Last year to fetch (defaults to domain config).
 
     Returns:
         FetchResult with status and metadata.
@@ -98,6 +159,10 @@ def fetch_faostat(
             source_id=f"faostat_{domain}", status="error",
             error_message=f"Unknown domain: {domain}",
         )
+
+    # Use domain config defaults if not specified
+    start = start_year or domain_config.get("start_year", 2010)
+    end = end_year or domain_config.get("end_year", 2023)
 
     token = _get_token(config)
     if not token:
@@ -114,7 +179,7 @@ def fetch_faostat(
     all_records = []
 
     # Query in chunks of 10 years to avoid API limits
-    years = list(range(start_year, end_year + 1))
+    years = list(range(start, end + 1))
     chunk_size = 10
     year_chunks = [years[i:i+chunk_size] for i in range(0, len(years), chunk_size)]
 

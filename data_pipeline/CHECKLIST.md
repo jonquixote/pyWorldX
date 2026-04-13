@@ -1,7 +1,7 @@
 # pyWorldX Real Data — Master Checklist
 
 Generated from `real_data_pyWorldX.md` + `real_data_pyWorldX_plan.md`.
-Updated: April 8, 2026 (local work, not pushed to GitHub).
+Updated: April 10, 2026 (local work, not pushed to GitHub).
 
 ---
 
@@ -11,11 +11,39 @@ Updated: April 8, 2026 (local work, not pushed to GitHub).
 |---|---|---|---|---|
 | FRED | API key | https://fred.stlouisfed.org/docs/api/api_key.html | ✅ In `.env` |
 | EIA | API key | https://www.eia.gov/opendata/register.php | ✅ In `.env` |
-| FAOSTAT | Bearer token | https://data.apps.fao.org/ | ⚠️ Token expired, OWID fallback active |
+| FAOSTAT | Bearer token | https://data.apps.fao.org/ | ✅ Active (60-min expiry, auto-refreshed) |
 | NASA Earthdata | Registration | https://urs.earthdata.nasa.gov/ | ⚠️ Free login required |
-| IHME GBD | Registration | https://healthdata.org/research-analysis/gbd | ✅ Automated via OWID |
-| HMD | Registration | https://www.mortality.org | ✅ Automated via OWID |
-| Footprint Network | Registration | https://footprint.info.yorku.ca/data/ | ✅ Automated via OWID |
+
+---
+
+## FAOSTAT Data Harvest (15 domains, 55,267 records)
+
+### Historical Domains (1961+)
+| Domain | Description | Records | Year Range | Entities |
+|---|---|---|---|---|
+| **FBSH** | Food Balance Sheets Historical | 6,466 | 1961-2013 | food.supply.kcal_per_capita, population.total |
+| **OA** | Annual Population | 315 | 1961-2023 | population.total |
+| **RL Full** | Land Use (extended) | 1,675 | 1961-2023 | arable_hectares, cropland, agricultural_land, meadows, forest |
+| **CBH** | Commodity Balances Non-Food Hist. | 11,197 | 1961-2013 | nonfood_production_historical |
+| **GT** | Agrifood Emissions Totals | 12,859 | 1961-2023 | n2o_direct, n2o_indirect, enteric_fermentation, manure, rice |
+
+### Modern Domains (2010+)
+| Domain | Description | Records | Year Range | Entities |
+|---|---|---|---|---|
+| **FBS** | Food Balance Sheets Modern | 1,690 | 2010-2023 | food.supply.kcal_per_capita, population.total |
+| **RL** | Land Use (standard) | 476 | 2010-2023 | arable_hectares, cropland, agricultural_land |
+| **MK** | Macro Indicators | 434 | 2010-2023 | gdp.value_added_agriculture, value_added_manufacturing |
+| **TCL** | Trade | 9,114 | 2010-2023 | agricultural_exports, agricultural_imports |
+| **CP** | Consumer Price Indices | 1,008 | 2010-2023 | cpi.food |
+| **FS** | Food Security | 5,145 | 2000-2024 | prevalence_undernourishment, severe_food_insecurity |
+| **PD** | Deflators | 56 | 2010-2023 | deflator.agricultural_production |
+| **CB** | Commodity Balances Non-Food | 718 | 2010-2023 | nonfood_production |
+
+### Agrifood Emissions Domains (1990+)
+| Domain | Description | Records | Year Range | Entities |
+|---|---|---|---|---|
+| **EM** | Agrifood Emissions Indicators | 3,162 | 1990-2023 | agrifood_total, agrifood_per_capita |
+| **GN** | Energy Use in Agriculture | 952 | 1990-2023 | energy.use_agriculture, emissions.agriculture_co2 |
 
 ---
 
@@ -39,109 +67,77 @@ Updated: April 8, 2026 (local work, not pushed to GitHub).
 | 13 | Nebel 2023 | `nebel_2023.py` | 1 | Metadata |
 | 14 | OECD | `oecd.py` | 324 | SNA_TABLE4 |
 | 15 | IMF WEO | `imf_weo.py` | 2 | Excel, Apr 2025 |
-| 16 | FAOSTAT | `faostat.py` | 1,690+ | FBS World (token expired, OWID fallback) |
-| 17 | PWT 11.0 | `pwt.py` | 13,690 | **Capital stock (rnna) 1950-2023** |
-| 18 | HYDE 3.3 | `hyde.py` | 26,838 | OWID API |
-| 19 | Maddison | `maddison.py` | 21,586 | OWID API |
-| 20 | UN Population | `un_population.py` | 363,783 | HDX download |
-| 21 | EI Review | `ei_review.py` | 26,838 | OWID API |
-| 22 | Footprint Network | `footprint_network.py` | 26,838 | OWID API |
-| 23 | Gapminder | `gapminder.py` | 4,935 | World Bank API |
-| 24 | EDGAR | `edgar.py` | 32 | CO2 1970-2024 |
-| 25 | IHME GBD | `ihme_gbd.py` | 6,780+ | OWID API |
-| 26 | HMD | `hmd.py` | 525 | OWID API |
-| 27 | USGS | `usgs.py` | 1+ | MCS PDF metadata + NR proxy |
-| 28 | UNIDO | `unido.py` | 2,443 | World Bank API |
-| 29 | OWID Daily Caloric | `owid.py` | 13,265 | FAO caloric supply 1274-2023 |
+| 16-30 | FAOSTAT (15 domains) | `faostat.py` | 55,267+ | FBS, FBSH, OA, RL, RL_full, MK, TCL, CP, FS, PD, CB, CBH, EM, GN, GT |
+| 31 | PWT 11.0 | `pwt.py` | 13,690 | Capital stock (rnna) 1950-2023 |
+| 32 | HYDE 3.3 | `hyde.py` | 26,838 | OWID API |
+| 33 | Maddison | `maddison.py` | 21,586 | OWID API |
+| 34 | UN Population | `un_population.py` | 363,783 | HDX download |
+| 35 | EI Review | `ei_review.py` | 26,838 | OWID API |
+| 36 | Footprint Network | `footprint_network.py` | 26,838 | OWID API |
+| 37 | Gapminder | `gapminder.py` | 4,935 | World Bank API |
+| 38 | EDGAR | `edgar.py` | 32 | CO2 1970-2024 |
+| 39 | IHME GBD | `ihme_gbd.py` | 6,780+ | OWID API |
+| 40 | HMD | `hmd.py` | 525 | OWID API |
+| 41 | USGS | `usgs.py` | 1+ | MCS PDF metadata + NR proxy |
+| 42 | UNIDO | `unido.py` | 2,443 | World Bank API |
 
-### ⚠️ Manual Download Helpers (3 connectors, code ready, tested)
+### ⚠️ Edge Cases (tested, with alternatives)
 | # | Source | Connector | Notes |
 |---|---|---|---|
-| 30 | UN Comtrade | `un_comtrade.py` | Auth required, tested ✅ |
-| 31 | Climate Watch | `climate_watch.py` | API DNS failure, tested ✅ |
-| 32 | Berkeley Earth | `berkeley_earth.py` | Servers down, NASA GISS alternative, tested ✅ |
+| 43 | UN Comtrade | `un_comtrade.py` | Auth required, tested ✅ |
+| 44 | Climate Watch | `climate_watch.py` | API DNS failure, tested ✅ |
+| 45 | Berkeley Earth | `berkeley_earth.py` | Servers down, NASA GISS alternative, tested ✅ |
 
 ---
 
 ## Pipeline Status
 
-### Aligned Entities (40 entities from 34 sources)
-| # | Entity | Source(s) | Year Range | Records | Notes |
-|---|---|---|---|---|---|
-| 1 | `emissions.co2_fossil` | GCP+PRIMAP+OWID+EDGAR | 1750-2024 | 273+ | |
-| 2 | `emissions.land_use_co2` | Carbon Atlas | 1750-2023 | 274 | |
-| 3 | `emissions.ghg_total` | Climate TRACE | 2022-2026 | 5 | |
-| 4-10 | `emissions.so2/nox/bc/oc/co/nh3/nmvoc` | CEDS | 1750-2022 | 15,000+ | 7 pollutants |
-| 11 | `emissions.co2_per_capita` | OWID | 1965-2024 | Varies | |
-| 12 | `energy.consumption` | EIA | 2020-2024 | 5 | |
-| 13 | `energy.primary_consumption` | OWID | 1965-2024 | 60 | |
-| 14 | `atmospheric.co2` | NOAA | 1959-2025 | 67 | |
-| 15 | `temperature.anomaly` | NASA GISS | 1880-1900 | 21 | |
-| 16 | `demographics.life_expectancy` | OWID+HMD | Varies | Varies | |
-| 17 | `food.supply.kcal_per_capita` | FAOSTAT+OWID | 1274-2023 | 159 | ✅ Covers Nebel window |
-| 18 | `population.total` | FAOSTAT+OWID+UN Pop+Gapminder | 2010-2023 | 14+ | |
-| 19 | `welfare.hdi` | UNDP HDR | 1990-2022 | 33 | |
-| 20 | `gdp.deflator` | FRED | 1947-2025 | 79 | |
-| 21 | `cpi` | FRED | 1947-2026 | 80 | |
-| 22 | `gdp.current_usd` | FRED+OECD | 1947-2025 | 403+ | |
-| 23 | `gdp.real` | FRED | 1947-2025 | 79 | |
-| 24 | `gdp.maddison` | OWID | Varies | Varies | |
-| 25 | `gdp.per_capita` | Gapminder | Varies | Varies | |
-| 26 | `gni.per_capita` | World Bank | — | (mapped) | |
-| 27 | `financial.fed_funds_rate` | FRED | 1954-2026 | 73 | |
-| 28 | `economic.consumer_sentiment` | FRED | 1978-2026 | 49 | |
-| 29 | `imf.weo_raw` | IMF | 1980-2029 | Excel | |
-| 30 | `resources.nonrenewable_stock` | USGS | — | (mapped) | |
-| 31 | **`capital.industrial_stock`** | **PWT 11.0** | **1950-2023** | **74** | **✅ NEW: rnna aggregated** |
-| 32 | `health.dalys` | IHME GBD | Varies | 6,780 | |
-| 33 | `health.child_mortality` | IHME GBD | Varies | 1,145 | |
-| 34 | `health.life_expectancy` | IHME GBD | Varies | 525 | |
-| 35 | `industry.manufacturing_value_added` | UNIDO | 1960-2024 | 2,443 | |
-| 36 | `industry.value_added` | UNIDO | 1960-2024 | 2,443 | |
-| 37 | `welfare.ecological_footprint` | Footprint Network | 1961-2022 | 26,838 | |
-| 38 | `output.service_per_capita` | World Bank (pending) | — | — | Mapping ready, API timeout |
-| 39 | `output.service_per_capita` (proxy) | GDP proxy | Varies | Varies | Deprecated, replaced |
-| 40 | `land.cropland_hectares` | HYDE/OWID | Varies | Varies | |
+### Aligned Entities (64 entities from 45 sources)
+| Category | Entities | Year Range |
+|---|---|---|
+| **Emissions** | co2_fossil, land_use_co2, ghg_total, so2, nox, bc, oc, co, nh3, nmvoc, co2_per_capita, ch4, agrifood_total, agrifood_per_capita, agrifood_n2o_direct, agrifood_n2o_indirect, agrifood_enteric_fermentation, agrifood_manure, agrifood_rice, agriculture_co2 | 1750-2026 |
+| **Energy** | consumption, primary_consumption, use_agriculture | 1965-2024 |
+| **Atmospheric** | co2 | 1959-2025 |
+| **Climate** | temperature.anomaly | 1880-2025 |
+| **Demographics** | life_expectancy | Varies |
+| **Food** | supply.kcal_per_capita, security.prevalence_undernourishment, security.severe_food_insecurity | 1274-2024 |
+| **Population** | total | 1961-2023 |
+| **Welfare** | hdi, ecological_footprint | 1961-2022 |
+| **Economics** | gdp (current, real, deflator, maddison, per_capita, value_added_agriculture, value_added_manufacturing), gni_per_capita, cpi, cpi.food, fed_funds_rate, consumer_sentiment | 1947-2026 |
+| **Trade** | agricultural_exports, agricultural_imports, nonfood_production, nonfood_production_historical | 1961-2023 |
+| **Prices** | deflator.agricultural_production | 2010-2023 |
+| **Industry** | manufacturing_value_added, value_added | 1950-2024 |
+| **Land** | arable_hectares, cropland_hectares, agricultural_land, permanent_meadows_pastures, forest_land | 1961-2023 |
+| **Capital** | industrial_stock (PWT rnna) | 1950-2023 |
+| **Health** | dalys, child_mortality, life_expectancy | Varies |
+| **Service** | output.service_per_capita | Varies |
+| **Resources** | nonrenewable_stock (proxy) | — |
 
-### Normalizers (31)
-All 42 raw sources have normalizers. No gaps.
+### Normalizers (45)
+All 56 raw sources have normalizers. No gaps.
 
-### Ontology Mappings (51)
-All 42 raw sources have ontology mappings. No gaps. Zero duplicate keys.
+### Ontology Mappings (65)
+All 56 raw sources have ontology mappings. No gaps.
 
 ### Unit Bridge (34 mappings)
 All pipeline units convert to World3 abstract units.
 
 ### Initial Conditions (10 sector stocks)
-| Stock | Sector | Entity | Default Value |
+| Stock | Sector | Entity | Status |
 |---|---|---|---|
-| POP | population | population.total | 1.65e9 persons |
-| PPOL | pollution | emissions.co2_fossil | 25,000 kt_CO2 |
-| PPOL_land_use | pollution | emissions.land_use_co2 | 1,500 Mt_CO2 |
-| PPOL_atmospheric | pollution | atmospheric.co2 | 295 ppm |
-| food_supply_per_capita | agriculture | food.supply.kcal_per_capita | 2,400 kcal/day |
-| temp_anomaly | pollution | temperature.anomaly | 0 degC |
-| IC | industry | capital.industrial_stock | PWT rnna (1950-2023) |
-| SC | service | output.service_per_capita | 500 USD/capita |
-| NR | resources | resources.nonrenewable_stock | 1.0e12 resource_units |
-| AL | agriculture | land.cropland_hectares | 1.0e9 hectares |
+| POP | population | population.total | ✅ FAOSTAT OA + World Bank 1961-2023 |
+| PPOL | pollution | emissions.co2_fossil | ✅ GCP/PRIMAP/EDGAR |
+| PPOL_land_use | pollution | emissions.land_use_co2 | ✅ Carbon Atlas |
+| PPOL_atmospheric | pollution | atmospheric.co2 | ✅ NOAA |
+| food_supply_per_capita | agriculture | food.supply.kcal_per_capita | ✅ FAOSTAT+OWID 1274-2023 |
+| temp_anomaly | pollution | temperature.anomaly | ✅ NASA GISS |
+| IC | industry | capital.industrial_stock | ✅ PWT 11.0 rnna |
+| SC | service | output.service_per_capita | ✅ World Bank services |
+| NR | resources | resources.nonrenewable_stock | ✅ USGS proxy |
+| AL | agriculture | land.arable_hectares | ✅ FAOSTAT RL Full 1961-2023 |
 
 ### CLI Commands (13 total)
-| Command | Status |
-|---|---|
-| `collect` | ✅ |
-| `status` | ✅ |
-| `clear` | ✅ |
-| `ls-raw` | ✅ |
-| `ls-aligned` | ✅ |
-| `run` | ✅ |
-| `init-conditions` | ✅ |
-| `nrmsd` | ✅ |
-| `transform` | ✅ |
-| `validate` | ✅ |
-| `cross-check` | ✅ |
-| `diff` | ✅ |
-| `fetch-owid` | ✅ |
+All working ✅
 
 ---
 
@@ -152,20 +148,15 @@ All pipeline units convert to World3 abstract units.
 - **Data pipeline tests:** 285+ ✅ (26 test files)
 - **pyWorldX tests:** 353 ✅ (unaffected)
 - **Connectors built:** 32/37
-- **Actively fetching data:** 29 ✅
-- **Manual download helpers:** 3 (all tested ✅)
-- **Raw sources with normalizer:** 42/42 ✅
-- **Raw sources with ontology mapping:** 42/42 ✅
-- **Duplicate keys in ONTOLOGY_MAP:** 0 ✅
-- **Aligned entities:** 40
-- **Calibration CSVs exported:** 30
-- **Normalizers:** 31
-- **Ontology mappings:** 51
+- **Raw sources:** 56 (incl. 15 FAOSTAT domains)
+- **FAOSTAT records:** 55,267+
+- **Aligned entities:** 64
+- **Calibration CSVs:** 50
+- **Normalizers:** 45
+- **Ontology mappings:** 65
 - **Unit bridge entries:** 34
 - **Initial condition stocks:** 10 ✅
+- **Ruff:** ✅ Clean
+- **Duplicate keys:** 0 ✅
+- **NRMSD formula:** Fixed (no abs) ✅
 - **ConnectorResult type:** PipelineConnectorResult dataclass ✅
-- **NRMSD formula:** Matches spec §9.1 (no abs in denominator) ✅
-- **Transforms:** 9/9 ✅ (+ derive_per_capita)
-- **Quality modules:** 4/4 ✅
-- **Export modules:** 3/3 ✅
-- **Aligned data merge:** ✅ merge with deduplication
