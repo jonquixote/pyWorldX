@@ -15,13 +15,11 @@ correct W3-03 table values.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
-from data_pipeline.schema import FetchResult
 
 
 # ── Canonical Standard Run reference data ─────────────────────────────
