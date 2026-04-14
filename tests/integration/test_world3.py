@@ -147,18 +147,19 @@ class TestCapitalSector:
         s = CapitalSector()
         ctx = RunContext()
         stocks = s.init_stocks(ctx)
+        fioaa_in = 0.07
         inputs = {
             "fcaor": Quantity(0.05, "dimensionless"),
             "POP": Quantity(3e9, "persons"),
             "food_per_capita": Quantity(300.0, "food_units_per_person"),
             "service_output_per_capita": Quantity(100.0, "service_output_units"),
+            "frac_io_to_agriculture": Quantity(fioaa_in, "dimensionless"),
         }
         out = s.compute(1970.0, stocks, inputs, ctx)
         fioai = out["frac_io_to_industry"].magnitude
         fioas = out["frac_io_to_services"].magnitude
-        fioaa = out["frac_io_to_agriculture"].magnitude
         fioac = out["frac_io_to_consumption"].magnitude
-        assert abs(fioai + fioas + fioaa + fioac - 1.0) < 0.01
+        assert abs(fioai + fioas + fioaa_in + fioac - 1.0) < 0.01
 
 
 class TestAgricultureSector:

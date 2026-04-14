@@ -189,7 +189,7 @@ def pollution_control_push() -> Scenario:
         end_year=2100,
         policy_events=[
             PolicyEvent(
-                target="pollution.industrial_pollution_intensity",
+                target="pollution_index",
                 shape=PolicyShape.STEP,
                 t_start=50.0,
                 magnitude=-0.005,

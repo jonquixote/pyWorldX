@@ -138,6 +138,76 @@ class TestCanonicalIntegration:
         expected_t = np.arange(0.0, 201.0, 1.0)
         np.testing.assert_array_almost_equal(result.time_index, expected_t)
 
+    def test_analytical_decay_subcase(self) -> None:
+        """Section 17.4 analytical sub-case: isolated pollution decay.
+
+        With pollution_inflow=0, P(0)=100, tau_p=20, the ODE
+            dP/dt = -P / tau_p
+        has analytical solution P(t) = 100 * exp(-t / tau_p).
+
+        Pass: relative error < 1e-4 for t ≤ 100, absolute error < 1e-6 for t > 100.
+        """
+        import numpy as np
+
+        from pyworldx.core.quantities import POLLUTION_UNITS, Quantity
+        from pyworldx.sectors.base import RunContext
+
+        class _IsolatedPollution:
+            """Pollution with inflow disabled — pure exponential decay."""
+
+            name = "pollution"
+            version = "1.0.0"
+            timestep_hint: float | None = None
+
+            def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
+                return {"P": Quantity(100.0, POLLUTION_UNITS)}
+
+            def compute(
+                self,
+                t: float,
+                stocks: dict[str, Quantity],
+                inputs: dict[str, Quantity],
+                ctx: RunContext,
+            ) -> dict[str, Quantity]:
+                p = stocks["P"].magnitude
+                return {"d_P": Quantity(-p / 20.0, POLLUTION_UNITS)}
+
+            def declares_reads(self) -> list[str]:
+                return []
+
+            def declares_writes(self) -> list[str]:
+                return ["P"]
+
+            def algebraic_loop_hints(self) -> list[dict[str, object]]:
+                return []
+
+            def metadata(self) -> dict[str, object]:
+                return {}
+
+        result = Engine(
+            sectors=[_IsolatedPollution()],
+            master_dt=1.0,
+            t_start=0.0,
+            t_end=200.0,
+        ).run()
+
+        t_grid = result.time_index
+        p_numerical = result.trajectories["P"]
+        p_analytical = 100.0 * np.exp(-t_grid / 20.0)
+
+        for ti, pn, pa in zip(t_grid, p_numerical, p_analytical):
+            if ti <= 100.0:
+                rel = abs(pn - pa) / max(abs(pa), 1e-12)
+                assert rel < 1e-4, (
+                    f"t={ti}: relative error {rel:.2e} exceeds 1e-4 "
+                    f"(numerical={pn:.6g}, analytical={pa:.6g})"
+                )
+            else:
+                assert abs(pn - pa) < 1e-6, (
+                    f"t={ti}: absolute error {abs(pn - pa):.2e} exceeds 1e-6 "
+                    f"(numerical={pn:.6g}, analytical={pa:.6g})"
+                )
+
     def test_to_dataframe_works(self) -> None:
         """RunResult.to_dataframe() should produce a valid DataFrame."""
         sectors = [ResourceSector(), IndustrySector(), PollutionSector()]

@@ -10,7 +10,7 @@ graph.py, loops.py, multirate.py, and balance.py.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -66,6 +66,8 @@ class Engine:
         balance_fail_tol: float = 1e-3,
         trace_level: str = "OFF",
         trace_ring_buffer_size: int = 2,
+        policy_applier: Callable[[dict[str, float], float], dict[str, float]] | None = None,
+        exogenous_injector: Callable[[float], dict[str, float]] | None = None,
     ) -> None:
         self.sectors = sectors
         self.master_dt = master_dt
@@ -75,6 +77,8 @@ class Engine:
         self.loop_max_iter = loop_max_iter
         self.trace_level = TraceLevel(trace_level.lower())
         self.trace_ring_buffer_size = trace_ring_buffer_size
+        self._policy_applier = policy_applier
+        self._exogenous_injector = exogenous_injector
 
         # Build sector lookup
         self._sectors_by_name: dict[str, Any] = {
@@ -177,6 +181,27 @@ class Engine:
         steps = int(round((self.t_end - self.t_start) / self.master_dt))
 
         for step_idx in range(steps):
+            # ── 0a) Apply policy events to shared state ─────────────
+            if self._policy_applier is not None:
+                shared_floats = {k: v.magnitude for k, v in shared.items()}
+                shared_floats_out = self._policy_applier(shared_floats, t)
+                for k, fval in shared_floats_out.items():
+                    if k in shared and k not in all_stocks:
+                        shared[k] = Quantity(fval, shared[k].unit)
+
+            # ── 0b) Inject exogenous overrides into shared state ────
+            if self._exogenous_injector is not None:
+                overrides = self._exogenous_injector(t)
+                from pyworldx.data.bridge import ENTITY_TO_ENGINE_MAP
+                for ontology_name, val in overrides.items():
+                    engine_name = ENTITY_TO_ENGINE_MAP.get(
+                        ontology_name, ontology_name
+                    )
+                    if engine_name in shared:
+                        shared[engine_name] = Quantity(
+                            val, shared[engine_name].unit
+                        )
+
             # Snapshot stocks before step for balance auditing
             stocks_before = {k: Quantity(v.magnitude, v.unit) for k, v in all_stocks.items()}
 

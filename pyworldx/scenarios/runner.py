@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
+
+import numpy as np
 
 from pyworldx.core.result import RunResult
 from pyworldx.scenarios.scenario import Scenario
@@ -40,6 +42,43 @@ class ScenarioSuiteResult:
         return len(self.failed)
 
 
+def build_policy_applier(
+    scenario: Scenario,
+) -> Callable[[dict[str, float], float], dict[str, float]] | None:
+    """Build a policy applier callable from a Scenario's policy events."""
+    if not scenario.policy_events:
+        return None
+
+    def applier(values: dict[str, float], t: float) -> dict[str, float]:
+        return scenario.apply_policies(values, t)
+
+    return applier
+
+
+def build_exogenous_injector(
+    scenario: Scenario,
+) -> Callable[[float], dict[str, float]] | None:
+    """Build an exogenous injector callable from a Scenario's exogenous overrides."""
+    if not scenario.exogenous_overrides:
+        return None
+
+    def injector(t: float) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for name, series in scenario.exogenous_overrides.items():
+            idx = series.index
+            if t <= idx.min():
+                result[name] = float(series.iloc[0])
+            elif t >= idx.max():
+                result[name] = float(series.iloc[-1])
+            else:
+                result[name] = float(
+                    np.interp(t, idx.astype(float), np.asarray(series.values, dtype=float))
+                )
+        return result
+
+    return injector
+
+
 def _run_single_scenario(
     scenario: Scenario,
     sector_factory: Any,
@@ -53,6 +92,8 @@ def _run_single_scenario(
         sectors=sectors,
         t_start=float(scenario.start_year - 1900),
         t_end=float(scenario.end_year - 1900),
+        policy_applier=build_policy_applier(scenario),
+        exogenous_injector=build_exogenous_injector(scenario),
         **engine_kwargs,
     )
     result = engine.run()

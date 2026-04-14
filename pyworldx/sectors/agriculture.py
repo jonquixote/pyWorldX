@@ -61,6 +61,23 @@ _LYMAP1_Y = (1.0, 1.0, 0.7, 0.4)
 _LLMY1_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0)
 _LLMY1_Y = (1.2, 1.0, 0.63, 0.36, 0.16, 0.055, 0.04, 0.025, 0.015, 0.01)
 
+# Fraction of inputs to land development: FIALD(MPLD/MPAI)
+# MDL: FIALDT  X = marginal productivity ratio (land/ag-input)
+# Canonical W3-03 values (Meadows spec / pyworld3)
+_FIALD_X = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)
+_FIALD_Y = (0.0, 0.05, 0.15, 0.30, 0.50, 0.70, 0.85, 0.95, 1.0)
+
+# Development cost per hectare: DCPH(fraction of PAL developed)
+# MDL: DCPHT  X = 1 - AL/PAL  (difficulty rises as more land is developed)
+_DCPH_X = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+_DCPH_Y = (100000.0, 7400.0, 5200.0, 3500.0, 2400.0, 1500.0,
+           750.0, 300.0, 150.0, 75.0, 50.0)
+
+# Fraction of agricultural inputs to land maintenance: FALM(PFR)
+# MDL: FALMT  X = perceived food ratio (FPC/SFPC, smoothed)
+_FALM_X = (0.0, 1.0, 2.0, 3.0, 4.0)
+_FALM_Y = (0.0, 0.04, 0.07, 0.09, 0.10)
+
 # ── W3-03 constants ───────────────────────────────────────────────────
 
 _AL0 = 0.9e9         # initial arable land (hectares, 1900)
@@ -74,6 +91,7 @@ _ILF = 600.0          # inherent land fertility (for LLMY normalization)
 _ALLN = 6000.0        # average life of land (years, normal)
 _UILDT = 10.0         # urban-industrial land development time
 _UILPC = 0.005        # urban-industrial land per capita (ha)
+_ALAI = 2.0           # average lifetime of agricultural inputs (years)
 
 
 class AgricultureSector:
@@ -96,14 +114,13 @@ class AgricultureSector:
     sfpc: float = _SFPC
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
-        # AI_S1/S2: two-stage cascade for SMOOTH2 on agricultural input (ALAI=2yr).
-        # Initialized to the 1900 equilibrium ag investment IO*FIOAA(230/230=1)=0.1.
-        ai_init = 0.0665e12 * 0.1
+        # CAI: 1st-order delay of cai_input = TAI*(1-FIALD). Initialized
+        # to 1900 equilibrium IO*FIOAA(1)*(1-FIALD(MPLD/MPAI≈1))≈IO*0.1*0.5.
+        cai_init = 0.0665e12 * 0.1 * 0.5
         return {
             "AL": Quantity(self.initial_arable_land, "hectares"),
             "LFERT": Quantity(self.initial_land_fertility, "veg_equiv_kg_per_ha_yr"),
-            "AI_S1": Quantity(ai_init, "agricultural_input_units"),
-            "AI_S2": Quantity(ai_init, "agricultural_input_units"),
+            "CAI": Quantity(cai_init, "agricultural_input_units"),
         }
 
     def compute(
@@ -115,8 +132,7 @@ class AgricultureSector:
     ) -> dict[str, Quantity]:
         al = stocks["AL"].magnitude
         lfert = stocks["LFERT"].magnitude
-        ai_s1 = stocks["AI_S1"].magnitude
-        ai_s2 = stocks["AI_S2"].magnitude
+        cai = stocks["CAI"].magnitude
 
         # Read inputs
         io = inputs.get(
@@ -139,17 +155,42 @@ class AgricultureSector:
         fpc_ratio_alloc = prev_fpc / max(ifpc, 1.0)
         fioaa = table_lookup(fpc_ratio_alloc, _FIOAA_X, _FIOAA_Y)
 
-        # Agricultural input (SMOOTH2 with ALAI=2yr — damps fast oscillations
-        # and matches pyworld3's smooth_cai structure).
-        tai = io * fioaa  # raw target agricultural investment
-        half_tau = 1.0  # ALAI=2yr, cascade each = 1yr
-        d_ai_s1 = (tai - ai_s1) / half_tau
-        d_ai_s2 = (ai_s1 - ai_s2) / half_tau
-        ag_input = ai_s2
-        aiph = ag_input / max(al, 1.0)
+        # ── FIALD split (land dev vs agricultural inputs) ─────────────
+        # AIPH from current smoothed CAI (FALM applied below). Use CAI for
+        # AIPH calc in marginal-productivity step (productive share only).
+        falm_x = prev_fpc / self.sfpc
+        falm = table_lookup(falm_x, _FALM_X, _FALM_Y)
+        ai_productive = cai * (1.0 - falm)
+        aiph = ai_productive / max(al, 1.0)
+
+        # MLYMC = d(LYMC)/d(AIPH) — numerical derivative of LYMC curve.
+        _mlymc_delta = 1.0
+        lymc_base = table_lookup(aiph, _LYMC_X, _LYMC_Y)
+        lymc_perturbed = table_lookup(
+            aiph + _mlymc_delta, _LYMC_X, _LYMC_Y
+        )
+        mlymc = (lymc_perturbed - lymc_base) / _mlymc_delta
+
+        # MPAI: marginal productivity of agricultural inputs = LFERT * MLYMC
+        mpai = max(lfert * mlymc, 1e-10)
+
+        # MPLD: marginal productivity of land development = LY / DCPH
+        dev_frac = 1.0 - al / max(self.potential_arable_land, 1.0)
+        dev_frac = min(max(dev_frac, 0.0), 1.0)
+        dcph = table_lookup(dev_frac, _DCPH_X, _DCPH_Y)
+        ly_now = lfert * lymc_base  # pollution factor applied later for yield,
+                                    # but MPLD uses base yield
+        mpld = ly_now / max(dcph, 1e-6)
+
+        fiald = table_lookup(mpld / mpai, _FIALD_X, _FIALD_Y)
+
+        # TAI and CAI dynamics
+        tai = io * fioaa
+        cai_input = tai * (1.0 - fiald)
+        d_cai = (cai_input - cai) / _ALAI
 
         # ── Land yield ────────────────────────────────────────────────
-        lymc = table_lookup(aiph, _LYMC_X, _LYMC_Y)
+        lymc = lymc_base
 
         # Air pollution effect on yield
         io_ratio = io / _IO70
@@ -163,10 +204,8 @@ class AgricultureSector:
         fpc = food / max(pop, 1.0)
 
         # ── Land dynamics ─────────────────────────────────────────────
-        remaining = max(self.potential_arable_land - al, 0.0)
-        land_dev = remaining * self.land_development_rate * min(
-            io / max(io + 1e9, 1.0), 1.0
-        )
+        # LDR = TAI * FIALD / DCPH (W3-03 canonical)
+        land_dev = tai * fiald / max(dcph, 1e-6)
 
         # Land erosion via land life: LLMY determines land lifetime
         ly_ratio = land_yield / _ILF
@@ -192,13 +231,14 @@ class AgricultureSector:
         return {
             "d_AL": Quantity(d_al, "hectares"),
             "d_LFERT": Quantity(d_lfert, "veg_equiv_kg_per_ha_yr"),
-            "d_AI_S1": Quantity(d_ai_s1, "agricultural_input_units"),
-            "d_AI_S2": Quantity(d_ai_s2, "agricultural_input_units"),
+            "d_CAI": Quantity(d_cai, "agricultural_input_units"),
             "food": Quantity(food, "food_units"),
             "food_per_capita": Quantity(fpc, "food_units_per_person"),
             "land_yield": Quantity(land_yield, "kg_per_hectare_year"),
             "frac_io_to_agriculture": Quantity(fioaa, "dimensionless"),
             "aiph": Quantity(aiph, "agricultural_inputs_per_hectare"),
+            "fiald": Quantity(fiald, "dimensionless"),
+            "falm": Quantity(falm, "dimensionless"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -208,11 +248,14 @@ class AgricultureSector:
         return [
             "AL",
             "LFERT",
+            "CAI",
             "food",
             "food_per_capita",
             "land_yield",
             "frac_io_to_agriculture",
             "aiph",
+            "fiald",
+            "falm",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
@@ -225,8 +268,6 @@ class AgricultureSector:
             "world7_alignment": WORLD7Alignment.NONE,
             "approximations": [
                 "Land fertility degradation simplified from full LFDR chain",
-                "DCPH (development cost) not modeled",
-                "FALM (fraction of inputs to land maintenance) not modeled",
             ],
             "free_parameters": [
                 "initial_arable_land",

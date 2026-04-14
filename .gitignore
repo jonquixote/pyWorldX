@@ -43,3 +43,7 @@ Thumbs.db
 
 # pytest
 .pytest_cache/
+
+# AI Notebook Output
+Notebook Conversations/
+Notebook Conversations/Raw_Q_and_A/

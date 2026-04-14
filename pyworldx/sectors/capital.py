@@ -37,11 +37,6 @@ from pyworldx.sectors.table_functions import table_lookup
 _FIOAS_X = (0.0, 0.5, 1.0, 1.5, 2.0)
 _FIOAS_Y = (0.3, 0.2, 0.1, 0.05, 0.0)
 
-# Fraction of IO to agriculture: FIOAA1(FPC/SFPC)
-# MDL: FIOAA1  X = food_per_capita / subsistence_fpc
-_FIOAA_X = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5)
-_FIOAA_Y = (0.4, 0.2, 0.1, 0.025, 0.0, 0.0)
-
 # Fraction of IO to consumption: FIOACV(IOPC/IOPC_DESIRED)
 # MDL: FIOACV  (indicator autonomous consumption)
 _FIOACV_X = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0)
@@ -72,7 +67,6 @@ _ICOR1 = 3.0        # industrial capital-output ratio (years)
 _SCOR1 = 1.0        # service capital-output ratio (years)
 _ALIC1 = 14.0       # average life of industrial capital (years)
 _ALSC1 = 20.0       # average life of service capital (years)
-_SFPC = 230.0       # subsistence food per capita (kg veg equiv / person / year)
 
 # Indicated service output per capita: ISOPC(IOPC)
 # MDL: ISOPCT  X = IOPC, from 0 to 1600 step 200
@@ -131,7 +125,9 @@ class CapitalSector:
         # Read core inputs
         pop = inputs.get("POP", Quantity(1.65e9, "persons")).magnitude
         fcaor = inputs.get("fcaor", Quantity(0.05, "dimensionless")).magnitude
-        fpc = inputs.get("food_per_capita", Quantity(230.0, "food_units_per_person")).magnitude
+        fioaa = inputs.get(
+            "frac_io_to_agriculture", Quantity(0.1, "dimensionless")
+        ).magnitude
         
         # Labor inputs
         p2 = inputs.get("P2", Quantity(7.0e8, "persons")).magnitude
@@ -167,9 +163,7 @@ class CapitalSector:
         sopc = so / max(pop, 1.0)
 
         # ── IO allocation fractions ───────────────────────────────────
-        # FIOAA: agriculture allocation based on food adequacy
-        fpc_ratio = fpc / _SFPC
-        fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
+        # FIOAA: read from shared state (computed by agriculture sector)
 
         # FIOAS: services allocation based on service adequacy
         # ISOPC is dynamic in W3-03: rises with IOPC (economic development)
@@ -205,7 +199,6 @@ class CapitalSector:
             "service_output_per_capita": Quantity(sopc, "service_output_units"),
             "frac_io_to_industry": Quantity(fioai, "dimensionless"),
             "frac_io_to_services": Quantity(fioas, "dimensionless"),
-            "frac_io_to_agriculture": Quantity(fioaa, "dimensionless"),
             "frac_io_to_consumption": Quantity(fioac, "dimensionless"),
             "labor_force": Quantity(labor_force, "persons"),
             "capacity_utilization_fraction": Quantity(cuf, "dimensionless"),
@@ -220,7 +213,8 @@ class CapitalSector:
             "AL",
             "aiph",
             "food_per_capita",
-            "industrial_output_per_capita",  
+            "frac_io_to_agriculture",
+            "industrial_output_per_capita",
             "service_output_per_capita",
         ]
 
@@ -236,7 +230,6 @@ class CapitalSector:
             "service_output_per_capita",
             "frac_io_to_industry",
             "frac_io_to_services",
-            "frac_io_to_agriculture",
             "frac_io_to_consumption",
             "labor_force",
             "capacity_utilization_fraction",
