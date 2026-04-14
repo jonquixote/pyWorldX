@@ -30,6 +30,27 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.table_functions import table_lookup
 
+
+# ── Nonlinear depreciation multiplier ─────────────────────────────────
+
+def depreciation_multiplier(maintenance_ratio: float) -> float:
+    """φ(MaintenanceRatio) — nonlinear depreciation acceleration.
+
+    DESIGN NOTE: The notebooks (q11, q54) specify the behavioral shape
+    (flat at 1.0 when ratio >= 1.0, spikes to 2.0-4.0x below 1.0) but do
+    NOT specify a precise formula. This quadratic function satisfies the
+    boundary conditions: φ(1.0)=1.0, φ(0.0)=4.0, monotonic.
+
+    φ = 1 + 3 × (1 - ratio)²
+    """
+    if maintenance_ratio >= 1.0:
+        return 1.0
+    if maintenance_ratio <= 0.0:
+        return 4.0
+    # Quadratic: φ = 1 + 3 × (1 - ratio)²
+    return min(1.0 + 3.0 * (1.0 - maintenance_ratio) ** 2, 4.0)
+
+
 # ── W3-03 canonical tables ────────────────────────────────────────────
 
 # Fraction of IO to services: FIOAS1(SOPC/ISOPC)
@@ -128,6 +149,9 @@ class CapitalSector:
         fioaa = inputs.get(
             "frac_io_to_agriculture", Quantity(0.1, "dimensionless")
         ).magnitude
+        maintenance_ratio = inputs.get(
+            "maintenance_ratio", Quantity(1.0, "dimensionless")
+        ).magnitude
         
         # Labor inputs
         p2 = inputs.get("P2", Quantity(7.0e8, "persons")).magnitude
@@ -185,8 +209,9 @@ class CapitalSector:
         # ── Investment and depreciation flows ─────────────────────────
         ic_investment = io * fioai
         sc_investment = io * fioas
-        ic_depreciation = ic / self.alic
-        sc_depreciation = sc / self.alsc
+        phi = depreciation_multiplier(maintenance_ratio)
+        ic_depreciation = (ic / self.alic) * phi
+        sc_depreciation = (sc / self.alsc) * phi
 
         return {
             "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
@@ -216,6 +241,7 @@ class CapitalSector:
             "frac_io_to_agriculture",
             "industrial_output_per_capita",
             "service_output_per_capita",
+            "maintenance_ratio",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -259,7 +285,7 @@ class CapitalSector:
             "approximations": [
                 "FIOAC table simplified normalization",
             ],
-            "free_parameters": ["icor", "scor", "alic", "alsc"],
+            "free_parameters": ["icor", "scor", "alic", "alsc", "maintenance_ratio"],
             "conservation_groups": [],
             "observables": [
                 "IC",

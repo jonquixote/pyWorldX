@@ -86,9 +86,8 @@ NEBEL_2024 = ModelPreset(
     ),
     parameter_overrides={
         # From paper abstract and Table S2 (DOI: 10.1111/jiec.13442):
-        # The two parameters with largest relative change:
+        # NOTE: pollution.pptd (111.8) is now the default — no override needed.
         "capital.alic": 15.24,        # was 14.0 (industrial capital lifetime)
-        "pollution.pptd": 111.8,      # was 20.0 (pollution transmission delay)
 
         # Additional parameters from Nebel's optimization
         # (extracted from Supporting Information S1):
@@ -103,10 +102,10 @@ NEBEL_2024 = ModelPreset(
     year=2024,
     notes=(
         "Parameter values from Table S2/S3 of the Supporting Information. "
-        "Only the two headline parameters (alic, pptd) are confirmed from "
-        "the paper abstract. The remaining values are best estimates from "
-        "the optimization range described in the paper. Full extraction "
-        "from S1 document pending."
+        "The headline parameter alic is confirmed from the paper abstract. "
+        "pptd=111.8 is now the engine default (Phase 0.5 recalibration). "
+        "The remaining values are best estimates from the optimization range "
+        "described in the paper. Full extraction from S1 document pending."
     ),
 )
 

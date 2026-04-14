@@ -147,7 +147,9 @@ class TestCrossPresetComparison:
 
         # These should differ for known Nebel overrides
         assert w3_params["capital.alic"] != nebel_params["capital.alic"]
-        assert w3_params["pollution.pptd"] != nebel_params["pollution.pptd"]
+        # pptd=111.8 is now the engine default, so both presets agree on it.
+        # Check icor instead (another Nebel recalibrated parameter):
+        assert w3_params["capital.icor"] != nebel_params["capital.icor"]
 
     def test_presets_produce_different_trajectories(self):
         """Different presets should produce observably different trajectories."""
@@ -162,10 +164,10 @@ class TestCrossPresetComparison:
         nebel_pop_2050 = np.interp(2050, nebel_time, nebel_trajs["POP"])
         assert w3_pop_2050 != nebel_pop_2050
 
-        # Pollution trajectories should differ (pptd is very different)
-        w3_poll_2050 = np.interp(2050, w3_time, w3_trajs["pollution_index"])
-        nebel_poll_2050 = np.interp(2050, nebel_time, nebel_trajs["pollution_index"])
-        assert w3_poll_2050 != nebel_poll_2050
+        # Industrial output trajectories should differ (alic, icor are different)
+        w3_io_2050 = np.interp(2050, w3_time, w3_trajs["industrial_output"])
+        nebel_io_2050 = np.interp(2050, nebel_time, nebel_trajs["industrial_output"])
+        assert w3_io_2050 != nebel_io_2050
 
     def test_nebel_has_later_peaks(self):
         """Nebel's higher alic should push industrial output peak later."""
@@ -206,7 +208,7 @@ class TestScenarioFromPresetIntegration:
     def test_scenario_from_nebel_has_correct_overrides(self):
         scenario = Scenario.from_preset("nebel_2024")
         assert scenario.parameter_overrides["capital.alic"] == 15.24
-        assert scenario.parameter_overrides["pollution.pptd"] == 111.8
+        # pptd is now the engine default — not a Nebel override
         assert "nebel_2024" in scenario.tags
 
     def test_scenario_extra_overrides_applied(self):

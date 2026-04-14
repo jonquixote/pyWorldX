@@ -84,15 +84,13 @@ class TestBuiltinPresets:
         assert NEBEL_2024.name == "nebel_2024"
 
     def test_nebel_2024_has_overrides(self):
-        """Nebel should have at least the two headline parameters."""
+        """Nebel should have at least the headline alic parameter.
+        NOTE: pptd=111.8 is now the engine default (Phase 0.5), not a Nebel override.
+        """
         assert "capital.alic" in NEBEL_2024.parameter_overrides
-        assert "pollution.pptd" in NEBEL_2024.parameter_overrides
 
     def test_nebel_2024_alic_value(self):
         assert NEBEL_2024.parameter_overrides["capital.alic"] == 15.24
-
-    def test_nebel_2024_pptd_value(self):
-        assert NEBEL_2024.parameter_overrides["pollution.pptd"] == 111.8
 
     def test_nebel_2024_year(self):
         assert NEBEL_2024.year == 2024
@@ -158,6 +156,7 @@ class TestPresetRegistryIntegration:
         reg = build_world3_parameter_registry()
         params = NEBEL_2024.apply_to_registry(reg)
         assert params["capital.alic"] == 15.24
+        # pptd=111.8 is now the engine default — no longer a Nebel override
         assert params["pollution.pptd"] == 111.8
 
     def test_nebel_preserves_non_overridden_defaults(self):
