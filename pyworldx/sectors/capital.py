@@ -73,9 +73,15 @@ _SCOR1 = 1.0        # service capital-output ratio (years)
 _ALIC1 = 14.0       # average life of industrial capital (years)
 _ALSC1 = 20.0       # average life of service capital (years)
 _SFPC = 230.0       # subsistence food per capita (kg veg equiv / person / year)
-_ISOPC = 120.0      # indicated service output per capita reference
+
+# Indicated service output per capita: ISOPC(IOPC)
+# MDL: ISOPCT  X = IOPC, from 0 to 1600 step 200
+_ISOPC_X = (0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0)
+_ISOPC_Y = (40.0, 300.0, 640.0, 1000.0, 1220.0, 1450.0, 1650.0, 1800.0, 2000.0)
 _LFPF = 0.75        # labor force participation fraction
 _LUFDT = 2.0        # labor utilization fraction delay time (years)
+_IOPC0 = 40.3       # initial IOPC (1900): IO0 / POP0 = 6.65e10 / 1.65e9
+_IET = 3.0          # income expectation averaging time (years)
 
 
 class CapitalSector:
@@ -107,6 +113,7 @@ class CapitalSector:
             "IC": Quantity(self.initial_ic, "capital_units"),
             "SC": Quantity(self.initial_sc, "capital_units"),
             "LUFD": Quantity(1.0, "dimensionless"),
+            "IOPCD": Quantity(_IOPC0, "industrial_output_units"),
         }
 
     def compute(
@@ -119,6 +126,7 @@ class CapitalSector:
         ic = stocks["IC"].magnitude
         sc = stocks["SC"].magnitude
         lufd = stocks["LUFD"].magnitude
+        iopcd = stocks["IOPCD"].magnitude
 
         # Read core inputs
         pop = inputs.get("POP", Quantity(1.65e9, "persons")).magnitude
@@ -164,12 +172,18 @@ class CapitalSector:
         fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
 
         # FIOAS: services allocation based on service adequacy
-        sopc_ratio = sopc / _ISOPC
+        # ISOPC is dynamic in W3-03: rises with IOPC (economic development)
+        isopc = table_lookup(iopc, _ISOPC_X, _ISOPC_Y)
+        sopc_ratio = sopc / max(isopc, 1.0)
         fioas = table_lookup(sopc_ratio, _FIOAS_X, _FIOAS_Y)
 
         # FIOAC: consumption allocation based on income level
-        iopc_ratio = iopc / 400.0  # normalize to reference IOPC
+        # W3-03: ratio is IOPC / IOPC_desired (smoothed expectation)
+        iopc_ratio = iopc / max(iopcd, 1.0)
         fioac = table_lookup(iopc_ratio, _FIOACV_X, _FIOACV_Y)
+
+        # IOPCD: smooth IOPC desired (income expectation)
+        d_iopcd = (iopc - iopcd) / max(_IET, 1e-6)
 
         # FIOAI: industrial investment is the residual
         fioai = max(1.0 - fioaa - fioas - fioac, 0.0)
@@ -184,6 +198,7 @@ class CapitalSector:
             "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
             "d_SC": Quantity(sc_investment - sc_depreciation, "capital_units"),
             "d_LUFD": Quantity(d_lufd, "dimensionless"),
+            "d_IOPCD": Quantity(d_iopcd, "industrial_output_units"),
             "industrial_output": Quantity(io, "industrial_output_units"),
             "industrial_output_per_capita": Quantity(iopc, "industrial_output_units"),
             "service_output": Quantity(so, "service_output_units"),
@@ -214,6 +229,7 @@ class CapitalSector:
             "IC",
             "SC",
             "LUFD",
+            "IOPCD",
             "industrial_output",
             "industrial_output_per_capita",
             "service_output",

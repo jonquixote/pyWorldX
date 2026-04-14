@@ -48,9 +48,10 @@ _M3_Y = (0.0562, 0.0373, 0.0252, 0.0171, 0.0118, 0.0083, 0.006)
 _M4_X = (20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 _M4_Y = (0.13, 0.11, 0.09, 0.07, 0.06, 0.05, 0.04)
 
-# Lifetime multiplier from food: LMF(FPC/SFPC)
+# Lifetime multiplier from food: LMF1(FPC/SFPC) — Standard Run table
+# MDL: LMF1T#87  (LMF2T is the post-policy variant with lower values)
 _LMF_X = (0.0, 1.0, 2.0, 3.0, 4.0, 5.0)
-_LMF_Y = (0.0, 1.0, 1.2, 1.3, 1.35, 1.4)
+_LMF_Y = (0.0, 1.0, 1.43, 1.5, 1.5, 1.5)
 
 # Lifetime multiplier from health services: LMHS1 (before IPHST)
 _LMHS1_X = (0.0, 20.0, 40.0, 60.0, 80.0, 100.0)
@@ -197,7 +198,6 @@ class PopulationSector:
         ).magnitude
 
         iopc = io / max(pop, 1.0)
-        dt = ctx.master_dt
 
         # ── Life expectancy ───────────────────────────────────────────
         # LMF: lifetime multiplier from food
@@ -335,12 +335,13 @@ class PopulationSector:
             "d_FCFPC": Quantity(d_fcfpc, "dollars_per_person"),
             # Aggregate for downstream sectors
             "POP": Quantity(pop, "persons"),
+            "P1": Quantity(p1, "persons"),
+            "P2": Quantity(p2, "persons"),
+            "P3": Quantity(p3, "persons"),
+            "P4": Quantity(p4, "persons"),
             "birth_rate": Quantity(births, "persons_per_year"),
             "death_rate": Quantity(total_deaths, "persons_per_year"),
             "life_expectancy": Quantity(life_expectancy, "years"),
-            "industrial_output_per_capita": Quantity(
-                iopc, "industrial_output_units"
-            ),
         }
 
     def declares_reads(self) -> list[str]:
@@ -361,7 +362,6 @@ class PopulationSector:
             "birth_rate",
             "death_rate",
             "life_expectancy",
-            "industrial_output_per_capita",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

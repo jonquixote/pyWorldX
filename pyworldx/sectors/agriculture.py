@@ -41,10 +41,15 @@ _LYMC_Y = (
     9.0, 9.2, 9.4, 9.6, 9.8, 10.0,
 )
 
-# Fraction of IO to agriculture: FIOAA1(FPC/SFPC)
-# MDL: FIOAA1  X = food per capita / subsistence FPC
+# Fraction of IO to agriculture: FIOAA1(FPC/IFPC)
+# MDL: FIOAA1  X = food per capita / indicated food per capita
 _FIOAA_X = (0.0, 0.5, 1.0, 1.5, 2.0, 2.5)
 _FIOAA_Y = (0.4, 0.2, 0.1, 0.025, 0.0, 0.0)
+
+# Indicated food per capita: IFPC(IOPC) — rising food expectation with development
+# MDL: IFPC1T / IFPC2T (identical in Standard Run)
+_IFPC_X = (0.0, 200.0, 400.0, 600.0, 800.0, 1000.0, 1200.0, 1400.0, 1600.0)
+_IFPC_Y = (230.0, 480.0, 690.0, 850.0, 970.0, 1070.0, 1150.0, 1210.0, 1250.0)
 
 # Land yield multiplier from air pollution: LYMAP1(IO/IO70)
 # MDL: LYMAP1#106  X = pollution proxy (IO relative to 1970)
@@ -90,14 +95,15 @@ class AgricultureSector:
     land_development_rate: float = 0.005
     sfpc: float = _SFPC
 
-    # Internal state for SMOOTH2 on FPC (2-stage cascade, matches W3-03)
-    _smooth_fpc_s1: float = _SFPC
-    _smooth_fpc_s2: float = _SFPC
-
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
+        # AI_S1/S2: two-stage cascade for SMOOTH2 on agricultural input (ALAI=2yr).
+        # Initialized to the 1900 equilibrium ag investment IO*FIOAA(230/230=1)=0.1.
+        ai_init = 0.0665e12 * 0.1
         return {
             "AL": Quantity(self.initial_arable_land, "hectares"),
             "LFERT": Quantity(self.initial_land_fertility, "veg_equiv_kg_per_ha_yr"),
+            "AI_S1": Quantity(ai_init, "agricultural_input_units"),
+            "AI_S2": Quantity(ai_init, "agricultural_input_units"),
         }
 
     def compute(
@@ -109,10 +115,12 @@ class AgricultureSector:
     ) -> dict[str, Quantity]:
         al = stocks["AL"].magnitude
         lfert = stocks["LFERT"].magnitude
+        ai_s1 = stocks["AI_S1"].magnitude
+        ai_s2 = stocks["AI_S2"].magnitude
 
         # Read inputs
         io = inputs.get(
-            "industrial_output", Quantity(0.0, "industrial_output_units")
+            "industrial_output", Quantity(6.65e10, "industrial_output_units")
         ).magnitude
         pop = inputs.get("POP", Quantity(1.65e9, "persons")).magnitude
         pi = inputs.get(
@@ -121,19 +129,23 @@ class AgricultureSector:
 
         iopc = io / max(pop, 1.0)
 
-        # ── Smoothed FPC for allocation decisions ────────────────────
-        # W3-03 uses SMOOTH2 on food ratio (~2yr delay).
-        # SMOOTH2 = two cascaded first-order delays, each with tau/2.
-        smooth_tau = 2.0  # smoothing time constant (years)
-        half_tau = smooth_tau / 2.0
-        alpha = min(ctx.master_dt / half_tau, 1.0)
+        # ── Agricultural input allocation (W3-03: FPC/IFPC, IFPC is dynamic) ─
+        # Use last-step raw FPC; guard against bootstrap-zero from engine seed.
+        prev_fpc_q = inputs.get("food_per_capita")
+        prev_fpc = prev_fpc_q.magnitude if prev_fpc_q is not None else self.sfpc
+        if prev_fpc <= 1.0:
+            prev_fpc = self.sfpc
+        ifpc = table_lookup(iopc, _IFPC_X, _IFPC_Y)
+        fpc_ratio_alloc = prev_fpc / max(ifpc, 1.0)
+        fioaa = table_lookup(fpc_ratio_alloc, _FIOAA_X, _FIOAA_Y)
 
-        # ── Agricultural input allocation ─────────────────────────────
-        fpc_ratio = self._smooth_fpc_s2 / self.sfpc
-        fioaa = table_lookup(fpc_ratio, _FIOAA_X, _FIOAA_Y)
-
-        # Agricultural input
-        ag_input = io * fioaa
+        # Agricultural input (SMOOTH2 with ALAI=2yr — damps fast oscillations
+        # and matches pyworld3's smooth_cai structure).
+        tai = io * fioaa  # raw target agricultural investment
+        half_tau = 1.0  # ALAI=2yr, cascade each = 1yr
+        d_ai_s1 = (tai - ai_s1) / half_tau
+        d_ai_s2 = (ai_s1 - ai_s2) / half_tau
+        ag_input = ai_s2
         aiph = ag_input / max(al, 1.0)
 
         # ── Land yield ────────────────────────────────────────────────
@@ -148,12 +160,7 @@ class AgricultureSector:
 
         # ── Food production ───────────────────────────────────────────
         food = al * land_yield * _LFH * (1.0 - _PL)
-        fpc_raw = food / max(pop, 1.0)
-
-        # Update SMOOTH2 cascade with this step's actual FPC
-        self._smooth_fpc_s1 += alpha * (fpc_raw - self._smooth_fpc_s1)
-        self._smooth_fpc_s2 += alpha * (self._smooth_fpc_s1 - self._smooth_fpc_s2)
-        fpc = self._smooth_fpc_s2
+        fpc = food / max(pop, 1.0)
 
         # ── Land dynamics ─────────────────────────────────────────────
         remaining = max(self.potential_arable_land - al, 0.0)
@@ -185,6 +192,8 @@ class AgricultureSector:
         return {
             "d_AL": Quantity(d_al, "hectares"),
             "d_LFERT": Quantity(d_lfert, "veg_equiv_kg_per_ha_yr"),
+            "d_AI_S1": Quantity(d_ai_s1, "agricultural_input_units"),
+            "d_AI_S2": Quantity(d_ai_s2, "agricultural_input_units"),
             "food": Quantity(food, "food_units"),
             "food_per_capita": Quantity(fpc, "food_units_per_person"),
             "land_yield": Quantity(land_yield, "kg_per_hectare_year"),
