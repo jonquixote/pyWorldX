@@ -230,8 +230,14 @@ class PopulationSector:
         ).magnitude
         toxin_health = max(0.0, min(toxin_health, 1.0))
 
+        # Gini stratified mortality: inequality reduces effective health access for majority
+        gini_mort = inputs.get(
+            "gini_mortality_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+        gini_mort = max(0.0, min(gini_mort, 1.0))
+
         # Life expectancy
-        life_expectancy = _LEN * lmf * lmhs * lmp * lmc * toxin_health
+        life_expectancy = _LEN * lmf * lmhs * lmp * lmc * toxin_health * gini_mort
         life_expectancy = max(life_expectancy, 1.0)
 
         # ── Age-specific mortality ────────────────────────────────────
@@ -374,6 +380,7 @@ class PopulationSector:
             "toxin_health_multiplier",
             "toxin_fertility_multiplier",
             "disease_death_rate",
+            "gini_mortality_mult",
         ]
 
     def declares_writes(self) -> list[str]:

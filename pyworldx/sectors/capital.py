@@ -230,13 +230,28 @@ class CapitalSector:
         r_input = max(1.0 - fcaor, 1e-6)
         h_input = max(h_raw, 1e-6)
 
-        io = (
+        io_raw = (
             _CD_TFP
             * k_input ** _CD_ALPHA
             * r_input ** self.resource_elasticity
             * h_input ** _CD_GAMMA
             * cuf
         )
+
+        # Gini inequality tax: high inequality (low resource_share_bot90) reduces
+        # effective labor productivity because the working majority is resource-starved.
+        # Neutral = 0.50; egalitarian (>0.50) yields a small bonus; oligarchic (<0.50) penalty.
+        resource_share_bot90 = inputs.get(
+            "resource_share_bot90", Quantity(0.50, "dimensionless")
+        ).magnitude
+        resource_share_bot90 = max(0.0, min(resource_share_bot90, 1.0))
+        _INEQ_COEFF = 0.5  # 1% output change per 2pp shift in resource_share
+        inequality_labor_mult = max(
+            0.5,
+            min(1.5, 1.0 + _INEQ_COEFF * (resource_share_bot90 - 0.50)),
+        )
+
+        io = io_raw * inequality_labor_mult
         iopc = io / max(pop, 1.0)
 
         # ── Service output ────────────────────────────────────────────
@@ -346,6 +361,7 @@ class CapitalSector:
             "tech_sector_investment",
             "sust_sector_investment",
             "trapped_capital",
+            "resource_share_bot90",
         ]
 
     def declares_writes(self) -> list[str]:
