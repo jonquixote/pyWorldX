@@ -70,6 +70,7 @@ class Engine:
         policy_applier: Callable[[dict[str, float], float], dict[str, float]] | None = None,
         exogenous_injector: Callable[[float], dict[str, float]] | None = None,
         central_registrar: CentralRegistrar | None = None,
+        strict_bootstrap: bool = False,
     ) -> None:
         self.sectors = sectors
         self.master_dt = master_dt
@@ -82,6 +83,7 @@ class Engine:
         self._policy_applier = policy_applier
         self._exogenous_injector = exogenous_injector
         self._central_registrar = central_registrar
+        self._strict_bootstrap = strict_bootstrap
 
         # Build sector lookup
         self._sectors_by_name: dict[str, Any] = {
@@ -416,7 +418,8 @@ class Engine:
                     if not k.startswith("d_"):
                         shared[k] = v
             except (KeyError, ZeroDivisionError):
-                pass
+                if self._strict_bootstrap:
+                    raise
 
         # Pass 2: Resolve algebraic loops at t=0
         for loop_info in self.dep_graph.loops:
@@ -455,7 +458,8 @@ class Engine:
                     if not k.startswith("d_"):
                         shared[k] = v
             except (KeyError, ZeroDivisionError):
-                pass
+                if self._strict_bootstrap:
+                    raise
 
         # Pass 3b: Re-compute sub-stepped sectors with converged values
         for s in self._sub_stepped:
@@ -466,7 +470,8 @@ class Engine:
                     if not k.startswith("d_"):
                         shared[k] = v
             except (KeyError, ZeroDivisionError):
-                pass
+                if self._strict_bootstrap:
+                    raise
 
         # Pass 4: Final loop resolution with correct extraction_rate
         for loop_info in self.dep_graph.loops:
