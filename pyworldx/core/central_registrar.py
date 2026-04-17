@@ -174,6 +174,10 @@ class CentralRegistrar:
             total_demand, "EJ_per_yr"
         )
 
+        # Global energy supply factor: ratio of available supply to total demand (capped at 1.0)
+        esf = min(total_supply / max(total_demand, 1e-15), 1.0)
+        shared["energy_supply_factor"] = Quantity(esf, "dimensionless")
+
         # ── 3. Check ceiling ───────────────────────────────────────
         ceiling_breached = total_demand > total_supply * (
             1.0 + self.overshoot_tolerance
