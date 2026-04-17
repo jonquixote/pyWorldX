@@ -76,6 +76,7 @@ def fetch_eia(
         "start": str(start_year),
         "end": str(end_year),
         "length": 5000,  # Max rows per request
+        "offset": 0,
     }
     # Note: EIA v2 API facets require special encoding; skip for now
     if facets:
@@ -83,10 +84,27 @@ def fetch_eia(
             for val in facet_values:
                 params.setdefault(f"facets[{facet_name}][]", []).append(val)
 
+    all_records = []
+    requests_made = 0
+    
     try:
-        r = requests.get(url, params=params, timeout=120)
-        r.raise_for_status()
-        data = r.json()
+        while requests_made < 10:
+            r = requests.get(url, params=params, timeout=120)
+            r.raise_for_status()
+            data = r.json()
+            
+            records_list = data.get("response", {}).get("data", [])
+            if not records_list:
+                break
+                
+            all_records.extend(records_list)
+            requests_made += 1
+            
+            if len(records_list) < 5000:
+                break
+                
+            params["offset"] += 5000
+            
     except requests.RequestException as e:
         duration = time.time() - t0
         record_fetch(
@@ -98,15 +116,13 @@ def fetch_eia(
             error_message=str(e), cache_hit=False,
         )
 
-    # Parse response
-    records_list = data.get("response", {}).get("data", [])
-    if not records_list:
+    if not all_records:
         return FetchResult(
             source_id=source_id, status="skipped",
             error_message="No data returned from EIA.",
         )
 
-    df = pd.DataFrame(records_list)
+    df = pd.DataFrame(all_records)
     df["source_id"] = source_id
     df["source_variable"] = route
     records = len(df)
@@ -148,6 +164,10 @@ def fetch_all(config: PipelineConfig) -> list[FetchResult]:
 
     # CO2 emissions
     result = fetch_eia(config, route="co2_emissions", start_year=1960, end_year=2024)
+    results.append(result)
+
+    # International End-Use (Sectoral Energy Consumption)
+    result = fetch_eia(config, route="international", start_year=1960, end_year=2024)
     results.append(result)
 
     return results

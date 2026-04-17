@@ -21,24 +21,27 @@ from pyworldx.sectors.capital import CapitalSector
 from pyworldx.sectors.pollution import PollutionSector
 from pyworldx.sectors.population import PopulationSector
 from pyworldx.sectors.resources import ResourcesSector
+from pyworldx.sectors.welfare import WelfareSector
 from pyworldx.validation.world3_reference import validate_against_nebel2023
 
 
-# Map NEBEL variable names → (engine trajectory key, optional transform)
+# Map NEBEL variable names → engine trajectory key
 NEBEL_TO_ENGINE: dict[str, str] = {
     "population": "POP",
     "industrial_output": "industrial_output",
     "food_per_capita": "food_per_capita",
     "pollution": "pollution_index",
     "nonrenewable_resources": "NR",
-    "service_per_capita": "service_output_per_capita",
+    "human_welfare_hdi": "human_welfare_index",
+    "ecological_footprint": "ecological_footprint",
+    # service_per_capita removed — no matching reference connector variable.
 }
 
 # Variables where the reference connector uses a different name than NEBEL
 REFERENCE_ALIAS: dict[str, str] = {
     "pollution": "pollution_index",
     "nonrenewable_resources": "nr_fraction_remaining",
-    "service_per_capita": "food_per_capita",  # placeholder — no direct ref
+    "human_welfare_hdi": "human_welfare_index",
 }
 
 
@@ -49,10 +52,9 @@ def _run_engine() -> pd.DataFrame:
         AgricultureSector(),
         ResourcesSector(),
         PollutionSector(),
+        WelfareSector(),
     ]
-    result = Engine(
-        sectors=sectors, master_dt=1.0, t_start=0.0, t_end=200.0
-    ).run()
+    result = Engine(sectors=sectors, master_dt=1.0, t_start=0.0, t_end=200.0).run()
     years = result.time_index + 1900.0
     frame: dict[str, np.ndarray] = {"year": years.astype(int)}
     for name, arr in result.trajectories.items():
@@ -70,9 +72,7 @@ def _build_model_output(df: pd.DataFrame) -> dict[str, pd.Series]:
     # nr_fraction_remaining reference, to match the NEBEL semantics.
     if "NR" in df.columns:
         nr0 = df["NR"].iloc[0]
-        model["nonrenewable_resources"] = (df["NR"] / nr0).rename(
-            "nonrenewable_resources"
-        )
+        model["nonrenewable_resources"] = (df["NR"] / nr0).rename("nonrenewable_resources")
     return model
 
 
@@ -88,11 +88,11 @@ def _build_historical() -> dict[str, pd.Series]:
 
 
 def test_nebel_mapping_complete() -> None:
-    """All 6 variables we can map have engine trajectories."""
+    """All 7 variables we can map have engine trajectories."""
     df = _run_engine()
     model = _build_model_output(df)
-    # At least 6 of 8 NEBEL variables covered
-    assert len(model) >= 6
+    # At least 7 of 8 NEBEL variables covered (service_per_capita has no ref)
+    assert len(model) >= 7
 
 
 def test_nebel_validation_runs_and_reports() -> None:

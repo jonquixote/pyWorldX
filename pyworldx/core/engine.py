@@ -33,6 +33,7 @@ from pyworldx.observability.tracing import (
     TraceCollector,
     TraceLevel,
 )
+from pyworldx.core.central_registrar import CentralRegistrar
 from pyworldx.sectors.base import RunContext
 
 # Re-export for backward compatibility
@@ -68,6 +69,7 @@ class Engine:
         trace_ring_buffer_size: int = 2,
         policy_applier: Callable[[dict[str, float], float], dict[str, float]] | None = None,
         exogenous_injector: Callable[[float], dict[str, float]] | None = None,
+        central_registrar: CentralRegistrar | None = None,
     ) -> None:
         self.sectors = sectors
         self.master_dt = master_dt
@@ -79,6 +81,7 @@ class Engine:
         self.trace_ring_buffer_size = trace_ring_buffer_size
         self._policy_applier = policy_applier
         self._exogenous_injector = exogenous_injector
+        self._central_registrar = central_registrar
 
         # Build sector lookup
         self._sectors_by_name: dict[str, Any] = {
@@ -116,10 +119,17 @@ class Engine:
         """Execute the full simulation and return structured results."""
         manifest = build_manifest(self.sectors)
 
+        # Shared auxiliary/observable state (inter-sector communication)
+        shared: dict[str, Quantity] = {}
+
+        # Set known defaults before any sector runs
+        shared["pollution_efficiency"] = Quantity(1.0, "dimensionless")
+
         ctx = RunContext(
             master_dt=self.master_dt,
             t_start=self.t_start,
             t_end=self.t_end,
+            shared_state=shared,
         )
 
         # ── Initialize stocks ────────────────────────────────────────
@@ -129,12 +139,6 @@ class Engine:
             sector_stocks = s.init_stocks(ctx)
             all_stocks.update(sector_stocks)
             sector_stock_names[s.name] = list(sector_stocks.keys())
-
-        # Shared auxiliary/observable state (inter-sector communication)
-        shared: dict[str, Quantity] = {}
-
-        # Set known defaults BEFORE declares_writes loop zeroes them
-        shared["pollution_efficiency"] = Quantity(1.0, "dimensionless")
 
         # Initialize shared state with defaults from all sector writes
         for s in self.sectors:
@@ -221,6 +225,10 @@ class Engine:
                 # Update shared auxiliaries
                 for k, v in record.auxiliaries.items():
                     shared[k] = v
+
+            # ── 1b) CentralRegistrar: resolve demands, enforce ceiling ─
+            if self._central_registrar is not None:
+                self._central_registrar.resolve(shared)
 
             # ── 2) Resolve algebraic loops in single-rate domain ─────
             for loop_info in self.dep_graph.loops:

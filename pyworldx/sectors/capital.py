@@ -1,13 +1,23 @@
-"""World3-03 Capital sector.
+"""World3-03 Capital sector with Cobb-Douglas production function.
 
 Calibrated to wrld3-03.mdl (Vensim, September 29 2005).
+Phase 2 upgrade: Cobb-Douglas production (Q81, Q64).
 
 Stocks: IC (industrial capital), SC (service capital), LUFD (delayed labor utilization fraction)
 Flows:  IC investment/depreciation, SC investment/depreciation, LUFD delay smoothing
 
-  IO   = IC * (1 - FCAOR) * CUF / ICOR
+  IO   = A · K^α · R^β · H^(1-α-β) · CUF      (Cobb-Douglas, Q81)
   SO   = SC * CUF / SCOR
   FIOAI = 1 - FIOAA - FIOAS - FIOAC   (residual)
+
+  where:
+    K = IC (industrial capital stock)
+    R = (1 - FCAOR)  — resource availability proxy
+    H = human_capital_multiplier (0-1 index from HumanCapitalSector)
+    α = 0.25  (physical capital elasticity)
+    β = 0.20  (resource/energy elasticity)
+    1-α-β = 0.55  (human capital / skilled labor elasticity)
+    A = TFP constant, calibrated so IO(1900) = 6.65×10¹⁰
 
 Labor subsector (Phase D):
   labor_force = (P2 + P3) * LFPF
@@ -17,7 +27,7 @@ Labor subsector (Phase D):
 
 Key W3-03 corrections:
   - ALIC1 = 14 years  ->  depreciation = 1/14
-  - IO includes (1-FCAOR) resource cost feedback
+  - IO includes (1-FCAOR) resource cost feedback via Cobb-Douglas R input
   - FIOAS table corrected to W3-03 values
   - FIOAI is a residual, not a separate table
   - FIOAC (consumption fraction) via ISOPC table
@@ -84,10 +94,27 @@ _CUF_Y = (1.0, 0.9, 0.7, 0.3, 0.1, 0.1)
 
 _IC0 = 2.1e11       # initial industrial capital (1900)
 _SC0 = 1.44e11      # initial service capital (1900)
-_ICOR1 = 3.0        # industrial capital-output ratio (years)
+_ICOR1 = 3.0        # industrial capital-output ratio (years) — kept for SO
 _SCOR1 = 1.0        # service capital-output ratio (years)
 _ALIC1 = 14.0       # average life of industrial capital (years)
 _ALSC1 = 20.0       # average life of service capital (years)
+
+# ── Cobb-Douglas production function parameters (Q81, Q64) ────────────
+#
+# Q = A · K^α · R^β · H^γ · CUF
+#   α = 0.25  (physical capital elasticity)
+#   β = 0.20  (resource/energy elasticity)
+#   γ = 0.55  (human capital elasticity, = 1 - α - β)
+#
+# TFP calibration (A):
+#   At 1900: K=2.1e11, R=(1-0.05)=0.95, H=0.3, CUF=1.0
+#   A = 6.65e10 / (K^0.25 · R^0.20 · H^0.55 · 1.0)
+#   A = 6.65e10 / (676.947 · 0.98979 · 0.51572 · 1.0)
+#   A ≈ 1.924445e+08
+_CD_ALPHA = 0.25     # physical capital elasticity
+_CD_BETA = 0.20      # resource/energy elasticity
+_CD_GAMMA = 0.55     # human capital elasticity (1 - α - β)
+_CD_TFP = 1.924445e8  # total factor productivity, calibrated to IO(1900)=6.65e10
 
 # Indicated service output per capita: ISOPC(IOPC)
 # MDL: ISOPCT  X = IOPC, from 0 to 1600 step 200
@@ -100,11 +127,15 @@ _IET = 3.0          # income expectation averaging time (years)
 
 
 class CapitalSector:
-    """World3-03 Capital sector with Phase D Labor/CUF.
+    """World3-03 Capital sector with Cobb-Douglas production (Q81).
+
+    Production function: IO = A · K^α · R^β · H^γ · CUF
+      K = IC, R = (1-FCAOR), H = human_capital_multiplier
+      α=0.25, β=0.20, γ=0.55
 
     Stocks: IC (industrial capital), SC (service capital), LUFD
-    Reads:  fcaor, POP, food_per_capita, service_output_per_capita, 
-            P2, P3, AL, aiph
+    Reads:  fcaor, POP, food_per_capita, service_output_per_capita,
+            P2, P3, AL, aiph, human_capital_multiplier
     Writes: IC, SC, industrial_output, industrial_output_per_capita,
             service_output, service_output_per_capita,
             frac_io_to_industry, frac_io_to_services, frac_io_to_agriculture,
@@ -112,7 +143,7 @@ class CapitalSector:
     """
 
     name = "capital"
-    version = "3.03"
+    version = "3.03-cd"
     timestep_hint: float | None = None
 
     # Parameters (W3-03)
@@ -166,20 +197,44 @@ class CapitalSector:
 
         # ── Labor Subsector ───────────────────────────────────────────
         labor_force = (p2 + p3) * _LFPF
-        
+
+        # SEIR labor force multiplier (reduces labor when disease is present)
+        seir_labor_mult = inputs.get(
+            "labor_force_multiplier", Quantity(1.0, "dimensionless")
+        ).magnitude
+        effective_labor = labor_force * seir_labor_mult
+
         pjis = ic * table_lookup(iopc_raw, _JPICU_X, _JPICU_Y)
         pjss = sc * table_lookup(sopc_raw, _JPSCU_X, _JPSCU_Y)
         pjas = al * table_lookup(aiph, _JPH_X, _JPH_Y)
         jobs = pjis + pjss + pjas
-        
-        luf = jobs / max(labor_force, 1.0)
+
+        luf = jobs / max(effective_labor, 1.0)
         cuf = table_lookup(lufd, _CUF_X, _CUF_Y)
         
         d_lufd = (luf - lufd) / max(_LUFDT, 1e-6)
 
-        # ── Industrial output ─────────────────────────────────────────
-        # IO = IC * (1 - FCAOR) * CUF / ICOR
-        io = ic * (1.0 - fcaor) * cuf / self.icor
+        # ── Industrial output (Cobb-Douglas, Q81) ─────────────────────
+        # IO = A · K^α · R^β · H^γ · CUF
+        #   K = IC (industrial capital)
+        #   R = (1 - FCAOR) — resource availability (0-1)
+        #   H = human_capital_multiplier (0-1 index)
+        h_raw = inputs.get(
+            "human_capital_multiplier", Quantity(0.3, "dimensionless")
+        ).magnitude
+
+        # Guard against zero/negative inputs for fractional exponents
+        k_input = max(ic, 1.0)
+        r_input = max(1.0 - fcaor, 1e-6)
+        h_input = max(h_raw, 1e-6)
+
+        io = (
+            _CD_TFP
+            * k_input ** _CD_ALPHA
+            * r_input ** _CD_BETA
+            * h_input ** _CD_GAMMA
+            * cuf
+        )
         iopc = io / max(pop, 1.0)
 
         # ── Service output ────────────────────────────────────────────
@@ -242,6 +297,8 @@ class CapitalSector:
             "industrial_output_per_capita",
             "service_output_per_capita",
             "maintenance_ratio",
+            "human_capital_multiplier",
+            "labor_force_multiplier",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -280,12 +337,17 @@ class CapitalSector:
     def metadata(self) -> dict[str, object]:
         return {
             "validation_status": ValidationStatus.EMPIRICALLY_ANCHORED,
-            "equation_source": EquationSource.MEADOWS_SPEC,
-            "world7_alignment": WORLD7Alignment.NONE,
+            "equation_source": EquationSource.SYNTHESIZED_FROM_PRIMARY_LITERATURE,
+            "world7_alignment": WORLD7Alignment.APPROXIMATE,
             "approximations": [
                 "FIOAC table simplified normalization",
+                "Cobb-Douglas IO = A·K^0.25·R^0.20·H^0.55·CUF (Q81)",
+                "R proxy: (1-FCAOR) resource availability",
             ],
-            "free_parameters": ["icor", "scor", "alic", "alsc", "maintenance_ratio"],
+            "free_parameters": [
+                "scor", "alic", "alsc", "maintenance_ratio",
+                "_CD_TFP", "_CD_ALPHA", "_CD_BETA", "_CD_GAMMA",
+            ],
             "conservation_groups": [],
             "observables": [
                 "IC",

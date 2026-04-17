@@ -1,17 +1,25 @@
-"""World3-03 Agriculture sector.
+"""World3-03 Agriculture sector with Cobb-Douglas yield function.
 
 Calibrated to wrld3-03.mdl (Vensim, September 29 2005).
+Phase 2 upgrade: Cobb-Douglas land yield multiplier (Q71, Q84).
 
 Stocks: AL (arable land), LFERT (land fertility)
 Flows:  land development, land erosion, land urbanization
         land fertility degradation, land fertility regeneration
 
   food = AL * LY * LFH * (1 - PL)
-  LY   = LFERT * LYMC(AIPH) * LYMAP(IO/IO70)
+  LY   = LFERT * LYMC_CD * LYMAP
+  LYMC_CD = A_ag · E^0.60 · M^0.20 · P^0.20   (Cobb-Douglas, Q71)
   AIPH = IO * FIOAA / AL
 
+  where:
+    E = energy supply factor (from CentralRegistrar or fossil output)
+    M = material/capital input, normalized LYMC(AIPH) / LYMC(AIPH_baseline)
+    P = phosphorus availability (from PhosphorusSector)
+    A_ag = LYMC baseline at 1900 conditions
+
 Key W3-03 corrections:
-  - LYMC expanded to full 26-point table
+  - LYMC expanded to full 26-point table (used for M normalization)
   - FIOAA corrected (reaches 0 at FPC/SFPC=2.0)
   - Food equation includes LFH=0.7 and PL=0.1
   - Land fertility as separate stock
@@ -93,13 +101,34 @@ _UILDT = 10.0         # urban-industrial land development time
 _UILPC = 0.005        # urban-industrial land per capita (ha)
 _ALAI = 2.0           # average lifetime of agricultural inputs (years)
 
+# ── Cobb-Douglas LYMC parameters (Q71, Q84) ─────────────────────────
+#
+# LYMC_CD = A_ag · E^0.60 · M^0.20 · P^0.20
+#   E = energy supply factor (normalized, 1.0 at baseline)
+#   M = LYMC(AIPH) / LYMC(AIPH_baseline) — material/capital input
+#   P = phosphorus availability (0-1, from PhosphorusSector)
+#
+# At 1900: AIPH_baseline ≈ 3.547, LYMC_baseline ≈ 1.177
+# A_ag = LYMC_baseline = 1.177 so that at E=1, M=1, P=1 we get the original
+_CD_AG_ENERGY_EXP = 0.60   # energy elasticity
+_CD_AG_MATERIAL_EXP = 0.20  # material/capital elasticity
+_CD_AG_PHOSPHORUS_EXP = 0.20  # phosphorus elasticity
+_AIPH_BASELINE = 3.547     # 1900 equilibrium AIPH
+
 
 class AgricultureSector:
-    """World3-03 Agriculture sector.
+    """World3-03 Agriculture sector with Cobb-Douglas yield (Q71).
+
+    Land yield multiplier: LYMC_CD = A_ag · E^0.60 · M^0.20 · P^0.20
+      E = energy supply factor, M = capital input (from LYMC table),
+      P = phosphorus availability
 
     Stocks: AL (arable land), LFERT (land fertility)
-    Reads:  industrial_output, POP, pollution_index
-    Writes: AL, LFERT, food, food_per_capita, land_yield, frac_io_to_agriculture
+    Reads:  industrial_output, POP, pollution_index, food_per_capita,
+            phosphorus_availability, heat_shock_multiplier, esp_multiplier,
+            energy_supply_factor
+    Writes: AL, LFERT, food, food_per_capita, land_yield,
+            frac_io_to_agriculture, aiph, fiald, falm
     """
 
     name = "agriculture"
@@ -190,14 +219,65 @@ class AgricultureSector:
         d_cai = (cai_input - cai) / _ALAI
 
         # ── Land yield ────────────────────────────────────────────────
-        lymc = lymc_base
-
         # Air pollution effect on yield
         io_ratio = io / _IO70
         lymap = table_lookup(io_ratio, _LYMAP1_X, _LYMAP1_Y)
 
-        # Land yield = fertility * capital multiplier * pollution effect
-        land_yield = lfert * lymc * lymap
+        # ── Cobb-Douglas land yield multiplier (Q71, Q84) ─────────────
+        # LYMC_CD = A_ag · E^0.60 · M^0.20 · P^0.20
+        #   A_ag  = LYMC at 1900 baseline AIPH
+        #   M     = LYMC(AIPH) / LYMC(AIPH_baseline)  (material/capital)
+        #   E     = energy supply factor (normalized, 1.0 at baseline)
+        #   P     = phosphorus availability (0-1)
+        lymc_baseline = table_lookup(_AIPH_BASELINE, _LYMC_X, _LYMC_Y)
+        m_norm = max(lymc_base / lymc_baseline, 1e-6)
+
+        # Energy input factor from CentralRegistrar or energy sector
+        e_factor = inputs.get(
+            "energy_supply_factor",
+            Quantity(1.0, "dimensionless"),
+        ).magnitude
+        e_factor = max(e_factor, 1e-6)
+
+        # Phosphorus effect on yield (Cobb-Douglas input, not end-of-pipe)
+        p_avail = inputs.get(
+            "phosphorus_availability",
+            Quantity(1.0, "dimensionless"),
+        ).magnitude
+        p_avail = max(p_avail, 1e-6)
+
+        # Cobb-Douglas LYMC computation
+        lymc_cd = (
+            lymc_baseline
+            * e_factor ** _CD_AG_ENERGY_EXP
+            * m_norm ** _CD_AG_MATERIAL_EXP
+            * p_avail ** _CD_AG_PHOSPHORUS_EXP
+        )
+
+        # Heat shock from climate (temperature anomaly)
+        heat_shock = inputs.get(
+            "heat_shock_multiplier",
+            Quantity(1.0, "dimensionless"),
+        ).magnitude
+
+        # Ecosystem services effect on yield
+        esp_mult = inputs.get(
+            "esp_multiplier",
+            Quantity(1.0, "dimensionless"),
+        ).magnitude
+
+        # SOC resilience: rooting depth threshold (Q84)
+        # When SOC < SOC_critical in PhosphorusSector, this drops non-linearly
+        soc_resilience = inputs.get(
+            "soc_resilience_multiplier",
+            Quantity(1.0, "dimensionless"),
+        ).magnitude
+
+        # Land yield = fertility * Cobb-Douglas_LYMC * pollution
+        #            * heat * ecosystem * soil_resilience
+        land_yield = (
+            lfert * lymc_cd * lymap * heat_shock * esp_mult * soc_resilience
+        )
 
         # ── Food production ───────────────────────────────────────────
         food = al * land_yield * _LFH * (1.0 - _PL)
@@ -242,7 +322,17 @@ class AgricultureSector:
         }
 
     def declares_reads(self) -> list[str]:
-        return ["industrial_output", "POP", "pollution_index", "food_per_capita"]
+        return [
+            "industrial_output",
+            "POP",
+            "pollution_index",
+            "food_per_capita",
+            "phosphorus_availability",
+            "heat_shock_multiplier",
+            "esp_multiplier",
+            "energy_supply_factor",
+            "soc_resilience_multiplier",
+        ]
 
     def declares_writes(self) -> list[str]:
         return [
@@ -264,10 +354,13 @@ class AgricultureSector:
     def metadata(self) -> dict[str, object]:
         return {
             "validation_status": ValidationStatus.EMPIRICALLY_ANCHORED,
-            "equation_source": EquationSource.MEADOWS_SPEC,
-            "world7_alignment": WORLD7Alignment.NONE,
+            "equation_source": EquationSource.SYNTHESIZED_FROM_PRIMARY_LITERATURE,
+            "world7_alignment": WORLD7Alignment.APPROXIMATE,
             "approximations": [
                 "Land fertility degradation simplified from full LFDR chain",
+                "Cobb-Douglas LYMC = A·E^0.60·M^0.20·P^0.20 (Q71)",
+                "M normalized from existing LYMC table",
+                "Energy supply factor defaults to 1.0 when not connected",
             ],
             "free_parameters": [
                 "initial_arable_land",
@@ -275,6 +368,9 @@ class AgricultureSector:
                 "initial_land_fertility",
                 "land_development_rate",
                 "sfpc",
+                "_CD_AG_ENERGY_EXP",
+                "_CD_AG_MATERIAL_EXP",
+                "_CD_AG_PHOSPHORUS_EXP",
             ],
             "conservation_groups": [],
             "observables": [

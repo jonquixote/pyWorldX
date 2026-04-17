@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -29,7 +29,7 @@ class PipelineConfig(BaseModel):
     eia_api_key: Optional[str] = None
     faostat_token: Optional[str] = None
 
-    def __init__(self, **data):
+    def __init__(self, **data: Any) -> None:
         import os
         # Read from env as fallback
         if not data.get("fred_api_key"):

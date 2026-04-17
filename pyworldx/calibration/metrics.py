@@ -40,9 +40,7 @@ def nrmsd_direct(
     pred_vals = np.asarray(series_pred.values, dtype=np.float64)
 
     if len(true_vals) != len(pred_vals):
-        raise ValueError(
-            f"Series length mismatch: {len(true_vals)} vs {len(pred_vals)}"
-        )
+        raise ValueError(f"Series length mismatch: {len(true_vals)} vs {len(pred_vals)}")
     if len(true_vals) == 0:
         raise ValueError("Cannot compute NRMSD on empty series")
 
@@ -51,7 +49,7 @@ def nrmsd_direct(
         raise ValueError("Cannot normalize: mean(true) is zero")
 
     rmsd = float(np.sqrt(np.mean((pred_vals - true_vals) ** 2)))
-    return rmsd / mean_true
+    return rmsd / abs(mean_true)
 
 
 def nrmsd_change_rate(
@@ -72,9 +70,7 @@ def nrmsd_change_rate(
     # Align indices
     common_idx = true_pct.index.intersection(pred_pct.index)
     if len(common_idx) == 0:
-        raise ValueError(
-            "No common indices after change-rate transformation"
-        )
+        raise ValueError("No common indices after change-rate transformation")
 
     return nrmsd_direct(true_pct.loc[common_idx], pred_pct.loc[common_idx])
 

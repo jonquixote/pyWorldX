@@ -22,7 +22,7 @@ class TestEquationSource:
         assert EquationSource.PLACEHOLDER.value == "placeholder"
 
     def test_count(self) -> None:
-        assert len(EquationSource) == 7
+        assert len(EquationSource) == 8
 
 
 class TestValidationStatus:

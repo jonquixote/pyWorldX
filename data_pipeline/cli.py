@@ -604,6 +604,18 @@ def _fetch_source(
     elif source_id == "gcp" or source_id.startswith("gcp_"):
         from data_pipeline.connectors.gcp import fetch_gcp
         return fetch_gcp(config)
+    elif source_id == "gcb":
+        from data_pipeline.connectors.gcb import fetch_gcb
+        return fetch_gcb(config)
+    elif source_id == "ssurgo":
+        from data_pipeline.connectors.ssurgo import fetch_ssurgo
+        return fetch_ssurgo(config)
+    elif source_id == "gcb":
+        from data_pipeline.connectors.gcb import fetch_gcb
+        return fetch_gcb(config)
+    elif source_id == "ssurgo":
+        from data_pipeline.connectors.ssurgo import fetch_ssurgo
+        return fetch_ssurgo(config)
     elif source_id == "un_population":
         from data_pipeline.connectors.un_population import fetch_all
         results = fetch_all(config)

@@ -128,7 +128,7 @@ class TestPPTDRecalibration:
     def test_3rd_order_delay_correct(self) -> None:
         """3-stage cascade uses stage_delay = pptd / 3.0."""
         from pyworldx.sectors.pollution import PollutionSector
-        sector = PollutionSector()
+        PollutionSector()
         expected_stage_delay = 111.8 / 3.0
         assert expected_stage_delay == pytest.approx(37.2667, rel=1e-3)
 

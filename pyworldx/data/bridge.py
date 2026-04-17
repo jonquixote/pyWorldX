@@ -205,8 +205,8 @@ class DataBridge:
 
             targets.append(CalibrationTarget(
                 variable_name=engine_var,
-                years=years,
-                values=values,
+                years=np.asarray(years, dtype=int),
+                values=np.asarray(values, dtype=float),
                 unit=unit,
                 weight=weight,
                 source=f"pipeline:{entity}",
@@ -255,8 +255,8 @@ class DataBridge:
 
             targets.append(CalibrationTarget(
                 variable_name=engine_var,
-                years=years,
-                values=values,
+                years=np.asarray(years, dtype=int),
+                values=np.asarray(values, dtype=float),
                 unit=result.unit,
                 weight=weight,
                 source=f"pipeline:{entity}",

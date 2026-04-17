@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import pandas as pd
 
@@ -33,11 +34,10 @@ URLS = {
     "2024": "https://pubs.usgs.gov/periodicals/mcs2024/mcs2024.pdf",
 }
 
-
 def fetch_usgs(
-    config: object,
+    config: Any,
     year: str = "2026",
-) -> object:
+) -> Any:
     """Download USGS Mineral Commodity Summaries PDF metadata.
 
     Also produces a proxy for non-renewable resources using cumulative
@@ -199,7 +199,7 @@ def compute_resource_extraction_index(
     index.name = "resource_extraction_index"
     index.index.name = "year"
 
-    return index
+    return index  # type: ignore[no-any-return]
 
 
 def compute_reserve_depletion_ratio(

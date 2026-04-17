@@ -9,7 +9,7 @@ The normalized data can then be processed by the transform chain.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Any
 
 import pandas as pd
 
@@ -18,7 +18,7 @@ import pandas as pd
 NORMALIZER_REGISTRY: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {}
 
 
-def register_normalizer(prefix: str):
+def register_normalizer(prefix: str) -> Callable[[Any], Any]:
     """Decorator to register a normalizer function for a source_id prefix."""
     def decorator(func: Callable[[pd.DataFrame], pd.DataFrame]) -> Callable[[pd.DataFrame], pd.DataFrame]:
         NORMALIZER_REGISTRY[prefix] = func
@@ -57,10 +57,10 @@ def normalize_world_bank(df: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame()
     
     # Extract date
-    result["year"] = pd.to_numeric(df.get("date", df.get("Date")), errors="coerce")
+    result["year"] = pd.to_numeric(df.get("date", df.get("Date")), errors="coerce")  # type: ignore[call-overload]
     
     # Extract value
-    result["value"] = pd.to_numeric(df.get("value", df.get("Value")), errors="coerce")
+    result["value"] = pd.to_numeric(df.get("value", df.get("Value")), errors="coerce")  # type: ignore[call-overload]
     
     # Extract country code
     if "countryiso3code" in df.columns:
@@ -251,7 +251,7 @@ def normalize_undp(df: pd.DataFrame) -> pd.DataFrame:
             result = result[world_mask].copy()
         else:
             # Aggregate all countries
-            result = result.groupby("year", as_index=False)["value"].mean()
+            result = result.groupby("year", as_index=False)[["value"]].mean()
             result["country_code"] = "World"
     
     result = result.dropna(subset=["year", "value"])
