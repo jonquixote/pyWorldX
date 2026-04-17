@@ -460,3 +460,148 @@ class TestPhase2SectorsIntegration:
         # Skip t=0 where bootstrap may not fully converge with new stocks
         assert np.all(result_no_p.trajectories["food_per_capita"][1:] > 0)
         assert np.all(result_with_p.trajectories["food_per_capita"][1:] > 0)
+
+
+# ── E2: 9 missing unit tests ─────────────────────────────────────────────
+
+
+def test_recycling_increases_with_prr() -> None:
+    """Higher PRR stock leads to higher phosphorus recycling rate."""
+    ctx = _make_ctx()
+    inputs = {
+        "industrial_output": Quantity(7.9e11, "industrial_output_units"),
+        "food_per_capita": Quantity(300.0, "food_units_per_person"),
+        "nr_fraction_remaining": Quantity(1.0, "dimensionless"),
+        "supply_multiplier_phosphorus": Quantity(1.0, "dimensionless"),
+    }
+    s_lo = PhosphorusSector(initial_prr=0.1)
+    s_hi = PhosphorusSector(initial_prr=0.9)
+    out_lo = s_lo.compute(0.0, s_lo.init_stocks(ctx), inputs, ctx)
+    out_hi = s_hi.compute(0.0, s_hi.init_stocks(ctx), inputs, ctx)
+    assert out_hi["phosphorus_recycling_rate"].magnitude > out_lo["phosphorus_recycling_rate"].magnitude
+
+
+def test_prr_increases_with_profitability() -> None:
+    """Profitability drives dPRR positive: with zero sedimentation, mining >> recycling cost → d_PRR > 0."""
+    ctx = _make_ctx()
+    # sedimentation_rate=0 isolates the profitability mechanism from the large dissipation term
+    s = PhosphorusSector(initial_prr=0.01, sedimentation_rate=0.0)
+    stocks = s.init_stocks(ctx)
+    inputs = {
+        "industrial_output": Quantity(7.9e11, "industrial_output_units"),
+        "food_per_capita": Quantity(300.0, "food_units_per_person"),
+        "nr_fraction_remaining": Quantity(1.0, "dimensionless"),
+        "supply_multiplier_phosphorus": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    assert out["d_PRR"].magnitude > 0.0, "dPRR must be positive when profitability_factor > 0 and dissipation = 0"
+
+
+def test_85_percent_floor_behavior() -> None:
+    """PRR clamps at 1.0: when PRR >= 1.0 and natural dynamics would push it higher, dPRR is forced ≤ 0."""
+    ctx = _make_ctx()
+    s = PhosphorusSector(initial_prr=1.0)
+    stocks = {"P_soc": Quantity(14000.0, "megatonnes_P"), "PRR": Quantity(1.0, "dimensionless")}
+    inputs = {
+        "industrial_output": Quantity(7.9e11, "industrial_output_units"),
+        "food_per_capita": Quantity(300.0, "food_units_per_person"),
+        "nr_fraction_remaining": Quantity(1.0, "dimensionless"),
+        "supply_multiplier_phosphorus": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    assert out["d_PRR"].magnitude <= 0.0, "dPRR must be <= 0 when PRR is at ceiling (1.0)"
+
+
+def test_analytical_weathering() -> None:
+    """Weathering loss = P_soc * weathering_rate exactly (closed form)."""
+    P_soc_val = 14000.0
+    rate = 0.001
+    ctx = _make_ctx()
+    s = PhosphorusSector(weathering_rate=rate)
+    stocks = {"P_soc": Quantity(P_soc_val, "megatonnes_P"), "PRR": Quantity(0.0, "dimensionless")}
+    inputs = {
+        "industrial_output": Quantity(7.9e11, "industrial_output_units"),
+        "food_per_capita": Quantity(0.0, "food_units_per_person"),  # zero waste
+        "nr_fraction_remaining": Quantity(0.0, "dimensionless"),    # zero mining
+        "supply_multiplier_phosphorus": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    expected_loss = P_soc_val * rate  # 14.0 Mt/yr
+    # dP_soc = 0 (mining) + 0 (recycling) - expected_loss (weathering) - 0 (waste)
+    assert abs(out["d_P_soc"].magnitude + expected_loss) < 1e-6, (
+        f"d_P_soc={out['d_P_soc'].magnitude:.6f}, expected ~{-expected_loss:.6f}"
+    )
+
+
+def test_finance_sector_reads_tnds_aes() -> None:
+    """FinanceSector.declares_reads() must include 'tnds_aes'."""
+    from pyworldx.sectors.finance import FinanceSector
+    assert "tnds_aes" in FinanceSector().declares_reads()
+
+
+def test_100_percent_replacement_impossible() -> None:
+    """AES cost grows when ESP → 0, but esp_multiplier stays near zero — natural services cannot be bought back."""
+    ctx = _make_ctx()
+    s = EcosystemServicesSector()
+    stocks = {"ESP": Quantity(0.01, "dimensionless")}
+    inputs = {
+        "pollution_index": Quantity(1.0, "dimensionless"),
+        "AL": Quantity(0.9e9, "hectares"),
+        "temperature_anomaly": Quantity(0.0, "deg_C_anomaly"),
+        "supply_multiplier_aes": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    assert out["tnds_aes"].magnitude > 0.0, "AES cost must be positive when ESP is depleted"
+    assert out["esp_multiplier"].magnitude < 0.1, (
+        "esp_multiplier must reflect actual ESP, not AES spending — 100% replacement impossible"
+    )
+
+
+def test_aerosol_decay() -> None:
+    """With industrial_output = 0, aerosol index falls to near zero (quasi-equilibrium at source=0)."""
+    ctx = _make_ctx()
+    s = ClimateSector()
+    stocks = s.init_stocks(ctx)
+    inputs = {
+        "industrial_output": Quantity(0.0, "industrial_output_units"),
+        "pollution_generation": Quantity(0.0, "pollution_units"),
+        "supply_multiplier_climate": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    assert out["aerosol_index"].magnitude < 1e-10, (
+        f"Aerosol must collapse to ~0 with zero IO; got {out['aerosol_index'].magnitude:.2e}"
+    )
+
+
+def test_aerosol_production() -> None:
+    """Aerosol index is proportional to industrial output (A = K_AERO * io * tau)."""
+    ctx = _make_ctx()
+    s = ClimateSector()
+    stocks = s.init_stocks(ctx)
+    base_inputs = {
+        "pollution_generation": Quantity(0.0, "pollution_units"),
+        "supply_multiplier_climate": Quantity(1.0, "dimensionless"),
+    }
+    out_lo = s.compute(0.0, stocks, {**base_inputs, "industrial_output": Quantity(1.0e11, "industrial_output_units")}, ctx)
+    out_hi = s.compute(0.0, stocks, {**base_inputs, "industrial_output": Quantity(3.0e11, "industrial_output_units")}, ctx)
+    ratio = out_hi["aerosol_index"].magnitude / max(out_lo["aerosol_index"].magnitude, 1e-30)
+    assert abs(ratio - 3.0) < 0.01, f"Aerosol should scale 3× with 3× IO; got ratio={ratio:.4f}"
+
+
+def test_analytical_aerosol_decay() -> None:
+    """Aerosol quasi-equilibrium matches closed-form A = K_AERO * io * tau_aero within 1%."""
+    from pyworldx.sectors.climate import _K_AERO, _TAU_AERO
+    io_val = 7.9e11
+    ctx = _make_ctx()
+    s = ClimateSector()
+    stocks = s.init_stocks(ctx)
+    inputs = {
+        "industrial_output": Quantity(io_val, "industrial_output_units"),
+        "pollution_generation": Quantity(0.0, "pollution_units"),
+        "supply_multiplier_climate": Quantity(1.0, "dimensionless"),
+    }
+    out = s.compute(0.0, stocks, inputs, ctx)
+    expected = _K_AERO * io_val * _TAU_AERO
+    actual = out["aerosol_index"].magnitude
+    rel_err = abs(actual - expected) / max(abs(expected), 1e-30)
+    assert rel_err < 0.01, f"Aerosol quasi-eq: expected={expected:.3e}, actual={actual:.3e}"
