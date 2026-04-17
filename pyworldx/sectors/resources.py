@@ -97,8 +97,14 @@ class ResourcesSector:
         else:
             nruf = _NRUF1
 
+        # Technology efficiency: higher resource_tech_mult → less extraction per capita
+        res_tech = inputs.get(
+            "resource_tech_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+        res_tech = max(res_tech, 1e-6)
+
         # NR usage rate
-        nrur = pop * pcrum * nruf
+        nrur = pop * pcrum * nruf / res_tech
 
         # Don't extract more than available
         nrur = min(nrur, max(nr, 0.0) / max(ctx.master_dt, 0.0625))
@@ -122,7 +128,7 @@ class ResourcesSector:
         }
 
     def declares_reads(self) -> list[str]:
-        return ["POP", "industrial_output", "industrial_output_per_capita"]
+        return ["POP", "industrial_output", "industrial_output_per_capita", "resource_tech_mult"]
 
     def declares_writes(self) -> list[str]:
         return [

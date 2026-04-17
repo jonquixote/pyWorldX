@@ -273,10 +273,15 @@ class AgricultureSector:
             Quantity(1.0, "dimensionless"),
         ).magnitude
 
+        # Technology yield boost from adaptive_technology sector
+        ag_tech_mult = inputs.get(
+            "agriculture_tech_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+
         # Land yield = fertility * Cobb-Douglas_LYMC * pollution
-        #            * heat * ecosystem * soil_resilience
+        #            * heat * ecosystem * soil_resilience * technology
         land_yield = (
-            lfert * lymc_cd * lymap * heat_shock * esp_mult * soc_resilience
+            lfert * lymc_cd * lymap * heat_shock * esp_mult * soc_resilience * ag_tech_mult
         )
 
         # ── Food production ───────────────────────────────────────────
@@ -332,6 +337,7 @@ class AgricultureSector:
             "esp_multiplier",
             "energy_supply_factor",
             "soc_resilience_multiplier",
+            "agriculture_tech_mult",
         ]
 
     def declares_writes(self) -> list[str]:

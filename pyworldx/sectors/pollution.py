@@ -115,9 +115,15 @@ class PollutionSector:
         aiph = food / max(al, 1.0)
         ppgao = aiph * al * _FIPM * _AMTI
 
+        # Technology abatement: higher pollution_tech_mult → cleaner production
+        pol_tech = inputs.get(
+            "pollution_tech_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+        pol_tech = max(pol_tech, 1e-6)
+
         # Total generation rate (before delay)
         ppgf = _PPGF1  # base run: no technology change
-        ppgr = (ppgio + ppgao) * ppgf
+        ppgr = (ppgio + ppgao) * ppgf / pol_tech
         pollution_generation = ppgr
 
         # ── DELAY3 pipeline (3-stage cascade) ─────────────────────────
@@ -150,7 +156,7 @@ class PollutionSector:
         }
 
     def declares_reads(self) -> list[str]:
-        return ["POP", "industrial_output", "food", "AL", "nrur"]
+        return ["POP", "industrial_output", "food", "AL", "nrur", "pollution_tech_mult"]
 
     def declares_writes(self) -> list[str]:
         return [
