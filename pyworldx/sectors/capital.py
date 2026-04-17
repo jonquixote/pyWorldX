@@ -115,6 +115,7 @@ _CD_ALPHA = 0.25     # physical capital elasticity
 _CD_BETA = 0.20      # resource/energy elasticity
 _CD_GAMMA = 0.55     # human capital elasticity (1 - α - β)
 _CD_TFP = 1.924445e8  # total factor productivity, calibrated to IO(1900)=6.65e10
+_ENERGY_INTENSITY_CAPITAL = 1.5  # energy_units demanded per industrial_output_unit
 
 # Indicated service output per capita: ISOPC(IOPC)
 # MDL: ISOPCT  X = IOPC, from 0 to 1600 step 200
@@ -269,6 +270,8 @@ class CapitalSector:
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
 
+        energy_demand_capital = io * _ENERGY_INTENSITY_CAPITAL
+
         return {
             "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
             "d_SC": Quantity(sc_investment - sc_depreciation, "capital_units"),
@@ -283,6 +286,7 @@ class CapitalSector:
             "frac_io_to_consumption": Quantity(fioac, "dimensionless"),
             "labor_force": Quantity(labor_force, "persons"),
             "capacity_utilization_fraction": Quantity(cuf, "dimensionless"),
+            "energy_demand_capital": Quantity(energy_demand_capital, "energy_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -317,6 +321,7 @@ class CapitalSector:
             "frac_io_to_consumption",
             "labor_force",
             "capacity_utilization_fraction",
+            "energy_demand_capital",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
