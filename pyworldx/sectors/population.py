@@ -224,8 +224,14 @@ class PopulationSector:
         cmi = table_lookup(iopc, _CMI_X, _CMI_Y)
         lmc = 1.0 - cmi * fpu
 
+        # Toxin health multiplier (from pollution_toxins sector)
+        toxin_health = inputs.get(
+            "toxin_health_multiplier", Quantity(1.0, "dimensionless")
+        ).magnitude
+        toxin_health = max(0.0, min(toxin_health, 1.0))
+
         # Life expectancy
-        life_expectancy = _LEN * lmf * lmhs * lmp * lmc
+        life_expectancy = _LEN * lmf * lmhs * lmp * lmc * toxin_health
         life_expectancy = max(life_expectancy, 1.0)
 
         # ── Age-specific mortality ────────────────────────────────────
@@ -257,8 +263,14 @@ class PopulationSector:
         # FM: fecundity multiplier from LE
         fm = table_lookup(life_expectancy, _FM_X, _FM_Y)
 
-        # MTF: maximum total fertility
-        mtf = _MTFN * fm
+        # Toxin fertility multiplier (endocrine disruption from pollution_toxins)
+        toxin_fertility = inputs.get(
+            "toxin_fertility_multiplier", Quantity(1.0, "dimensionless")
+        ).magnitude
+        toxin_fertility = max(0.0, min(toxin_fertility, 1.0))
+
+        # MTF: maximum total fertility (reduced by toxin exposure)
+        mtf = _MTFN * fm * toxin_fertility
 
         # Average IOPC (SMOOTH with IEAT)
         d_aiopc = (iopc - aiopc) / max(_IEAT, 1e-6)
@@ -350,6 +362,8 @@ class PopulationSector:
             "industrial_output",
             "pollution_index",
             "service_output_per_capita",
+            "toxin_health_multiplier",
+            "toxin_fertility_multiplier",
         ]
 
     def declares_writes(self) -> list[str]:
