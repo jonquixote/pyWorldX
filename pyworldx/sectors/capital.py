@@ -153,6 +153,7 @@ class CapitalSector:
     scor: float = _SCOR1
     alic: float = _ALIC1
     alsc: float = _ALSC1
+    resource_elasticity: float = _CD_BETA  # Cobb-Douglas β; mutable for scenarios
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -231,7 +232,7 @@ class CapitalSector:
         io = (
             _CD_TFP
             * k_input ** _CD_ALPHA
-            * r_input ** _CD_BETA
+            * r_input ** self.resource_elasticity
             * h_input ** _CD_GAMMA
             * cuf
         )
