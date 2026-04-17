@@ -5,6 +5,44 @@ from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 
 
+def make_phase2_sectors() -> list[object]:
+    """Return the full set of Phase 2 sector instances for integration tests."""
+    from pyworldx.sectors.population import PopulationSector
+    from pyworldx.sectors.capital import CapitalSector
+    from pyworldx.sectors.agriculture import AgricultureSector
+    from pyworldx.sectors.resources import ResourcesSector
+    from pyworldx.sectors.pollution import PollutionSector
+    from pyworldx.sectors.climate import ClimateSector
+    from pyworldx.sectors.ecosystem_services import EcosystemServicesSector
+    from pyworldx.sectors.finance import FinanceSector
+    from pyworldx.sectors.human_capital import HumanCapitalSector
+    from pyworldx.sectors.welfare import WelfareSector
+    from pyworldx.sectors.phosphorus import PhosphorusSector
+    from pyworldx.sectors.energy_fossil import EnergyFossilSector
+    from pyworldx.sectors.energy_technology import EnergyTechnologySector
+    from pyworldx.sectors.energy_sustainable import EnergySustainableSector
+    from pyworldx.sectors.seir import SEIRModule
+    from pyworldx.sectors.regional_trade import RegionalTradeSector
+    return [
+        PopulationSector(),
+        CapitalSector(),
+        AgricultureSector(),
+        ResourcesSector(),
+        PollutionSector(),
+        ClimateSector(),
+        EcosystemServicesSector(),
+        FinanceSector(),
+        HumanCapitalSector(),
+        WelfareSector(),
+        PhosphorusSector(),
+        EnergyFossilSector(),
+        EnergyTechnologySector(),
+        EnergySustainableSector(),
+        SEIRModule(),
+        RegionalTradeSector(),
+    ]
+
+
 def make_ctx(master_dt: float = 1.0) -> RunContext:
     """Return a minimal RunContext using relative time (t=0→200, 1900→2100)."""
     # IMPORTANT: use t_start=0.0, NOT 1900.0. The engine runs in relative time.

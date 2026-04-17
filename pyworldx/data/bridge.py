@@ -54,6 +54,20 @@ ENTITY_TO_ENGINE_MAP: dict[str, str] = {
     # USGS Layer 3 cross-validation proxies
     "resources.extraction_index": "resource_extraction_index",
     "resources.depletion_ratio": "reserve_depletion_ratio",
+
+    # Phase 2: Carbon cycle (5-compartment, pollution_ghg sector)
+    "carbon.atmospheric_gtc": "C_atm",
+    "carbon.land_gtc": "C_land",
+    "carbon.soil_gtc": "C_soc",
+    "carbon.ocean_surface_gtc": "C_ocean_surf",
+    "carbon.ocean_deep_gtc": "C_ocean_deep",
+
+    # Phase 2: Cross-sector coupling signals
+    "finance.resilience": "financial_resilience",
+    "minerals.tech_metals_availability": "tech_metals_availability",
+    "climate.temperature_anomaly": "temperature_anomaly",
+    "epidemiology.labor_force_multiplier": "labor_force_multiplier",
+    "energy.supply_factor": "energy_supply_factor",
 }
 
 # NRMSD comparison method per variable (from Nebel 2023 conventions).
@@ -76,6 +90,18 @@ NRMSD_METHOD: dict[str, str] = {
     # USGS Layer 3 proxies
     "resource_extraction_index": "change_rate",
     "reserve_depletion_ratio": "change_rate",
+    # Phase 2: Carbon cycle
+    "C_atm": "direct",
+    "C_land": "direct",
+    "C_soc": "direct",
+    "C_ocean_surf": "direct",
+    "C_ocean_deep": "direct",
+    # Phase 2: Cross-sector coupling signals
+    "financial_resilience": "direct",
+    "tech_metals_availability": "direct",
+    "temperature_anomaly": "direct",
+    "labor_force_multiplier": "direct",
+    "energy_supply_factor": "direct",
 }
 
 
