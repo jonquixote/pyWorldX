@@ -206,6 +206,7 @@ class SEIRModule:
 
         # Compute derivatives for each cohort
         outputs: dict[str, Quantity] = {}
+        total_disease_excess_deaths: float = 0.0
 
         for i, label in enumerate(_COHORT_NAMES):
             s = S_vals[i]
@@ -232,6 +233,7 @@ class SEIRModule:
             deaths_e = death_rate * e
             deaths_i = death_rate * iv * 1.5  # Higher mortality for infected
             deaths_r = death_rate * r
+            total_disease_excess_deaths += death_rate * iv * 0.5  # excess above background
 
             # SEIR dynamics
             dS = births - foi_c * s - deaths_s
@@ -286,6 +288,9 @@ class SEIRModule:
         )
         outputs["infected_count"] = Quantity(I_total, "persons")
         outputs["reproduction_number"] = Quantity(R_eff, "dimensionless")
+        outputs["disease_death_rate"] = Quantity(
+            total_disease_excess_deaths / max(N_total, 1.0), "per_year"
+        )
 
         # Write S/E/I/R stocks to shared for recording
         for i, label in enumerate(_COHORT_NAMES):
@@ -315,6 +320,7 @@ class SEIRModule:
             "labor_force_multiplier",
             "infected_count",
             "reproduction_number",
+            "disease_death_rate",
         ])
         return writes
 
