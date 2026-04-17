@@ -298,10 +298,18 @@ class CapitalSector:
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
 
+        # Trapped capital refund: tech metals scarcity strands energy investment;
+        # those funds return to the productive capital pool
+        trapped_capital_refund = inputs.get(
+            "trapped_capital", Quantity(0.0, "capital_units")
+        ).magnitude
+
         energy_demand_capital = io * _ENERGY_INTENSITY_CAPITAL
 
         return {
-            "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
+            "d_IC": Quantity(
+                ic_investment - ic_depreciation + trapped_capital_refund, "capital_units"
+            ),
             "d_SC": Quantity(sc_investment - sc_depreciation, "capital_units"),
             "d_LUFD": Quantity(d_lufd, "dimensionless"),
             "d_IOPCD": Quantity(d_iopcd, "industrial_output_units"),
@@ -337,6 +345,7 @@ class CapitalSector:
             "fossil_sector_investment",
             "tech_sector_investment",
             "sust_sector_investment",
+            "trapped_capital",
         ]
 
     def declares_writes(self) -> list[str]:
