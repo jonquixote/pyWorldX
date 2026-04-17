@@ -263,9 +263,15 @@ class CapitalSector:
         # FIOAI: industrial investment is the residual
         fioai = max(1.0 - fioaa - fioas - fioac, 0.0)
 
+        # Energy supply constraint: scale new investments when supply is insufficient
+        esf = inputs.get(
+            "energy_supply_factor", Quantity(1.0, "dimensionless")
+        ).magnitude
+        esf = max(0.0, min(esf, 1.0))
+
         # ── Investment and depreciation flows ─────────────────────────
-        ic_investment = io * fioai
-        sc_investment = io * fioas
+        ic_investment = io * fioai * esf
+        sc_investment = io * fioas * esf
         phi = depreciation_multiplier(maintenance_ratio)
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
@@ -304,6 +310,7 @@ class CapitalSector:
             "maintenance_ratio",
             "human_capital_multiplier",
             "labor_force_multiplier",
+            "energy_supply_factor",
         ]
 
     def declares_writes(self) -> list[str]:
