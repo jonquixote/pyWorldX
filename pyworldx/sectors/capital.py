@@ -269,9 +269,17 @@ class CapitalSector:
         ).magnitude
         esf = max(0.0, min(esf, 1.0))
 
+        # Financial resilience: gate investment when balance sheets are stressed
+        fin_res = inputs.get(
+            "financial_resilience", Quantity(1.0, "dimensionless")
+        ).magnitude
+        fin_res = max(0.0, min(fin_res, 1.0))
+
+        investment_gate = esf * fin_res
+
         # ── Investment and depreciation flows ─────────────────────────
-        ic_investment = io * fioai * esf
-        sc_investment = io * fioas * esf
+        ic_investment = io * fioai * investment_gate
+        sc_investment = io * fioas * investment_gate
         phi = depreciation_multiplier(maintenance_ratio)
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
@@ -311,6 +319,7 @@ class CapitalSector:
             "human_capital_multiplier",
             "labor_force_multiplier",
             "energy_supply_factor",
+            "financial_resilience",
         ]
 
     def declares_writes(self) -> list[str]:
