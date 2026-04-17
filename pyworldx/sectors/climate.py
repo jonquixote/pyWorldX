@@ -102,13 +102,15 @@ class ClimateSector:
             "supply_multiplier_climate", Quantity(1.0, "dimensionless")
         ).magnitude
 
-        # CO2 proxy from pollution generation (normalized)
-        co2 = _CO2_PREINDUSTRIAL + pollution_gen * 1e-6
-
-        # Radiative forcing from GHG
-        rf_ghg = _RF_GHG_COEFF * math.log(
-            max(co2 / _CO2_PREINDUSTRIAL, 1e-10)
-        )
+        # Radiative forcing from GHG: prefer authoritative value from pollution_ghg sector;
+        # fall back to internal CO2-proxy derivation when that sector is absent.
+        if "ghg_radiative_forcing" in inputs:
+            rf_ghg = inputs["ghg_radiative_forcing"].magnitude
+        else:
+            co2 = _CO2_PREINDUSTRIAL + pollution_gen * 1e-6
+            rf_ghg = _RF_GHG_COEFF * math.log(
+                max(co2 / _CO2_PREINDUSTRIAL, 1e-10)
+            )
 
         # Radiative forcing from aerosols (cooling, so negative)
         rf_aero = _RF_AERO_COEFF * A
@@ -162,6 +164,7 @@ class ClimateSector:
             "industrial_output",
             "pollution_generation",
             "supply_multiplier_climate",
+            "ghg_radiative_forcing",
         ]
 
     def declares_writes(self) -> list[str]:
