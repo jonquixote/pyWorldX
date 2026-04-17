@@ -27,6 +27,7 @@ _EDU_RATE_Y = (0.0, 0.01, 0.024587, 0.06, 0.10, 0.15)
 
 _SKILL_HALF_LIFE = 10.0  # years
 _H0 = 0.3  # Pre-industrial baseline
+_EDU_TNDS_FRACTION = 0.05  # fraction of (sopc × pop) allocated to education spending
 
 
 class HumanCapitalSector:
@@ -98,6 +99,8 @@ class HumanCapitalSector:
         # Human capital multiplier for production function (0-1 scale)
         h_multiplier = max(H, 0.0)
 
+        education_tnds = _EDU_TNDS_FRACTION * sopc * pop
+
         return {
             "d_H": Quantity(dH, "dimensionless"),
             "education_rate": Quantity(edu_rate, "dimensionless"),
@@ -108,6 +111,7 @@ class HumanCapitalSector:
             "human_capital_multiplier": Quantity(
                 h_multiplier, "dimensionless"
             ),
+            "education_tnds": Quantity(education_tnds, "capital_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -124,6 +128,7 @@ class HumanCapitalSector:
             "skill_degradation_rate",
             "mortality_loss",
             "human_capital_multiplier",
+            "education_tnds",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
