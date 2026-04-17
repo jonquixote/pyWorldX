@@ -40,7 +40,8 @@ _DP0 = 0.0             # initial Pension Debt
 _DEBT_REPAYMENT = 30.0  # debt amortization time (years)
 _INTEREST_RATE = 0.03   # annual interest rate on total debt
 _DEBT_GDP_CEILING = 1.5  # 150% Debt-to-GDP ceiling
-_MILITARY_FRACTION = 0.02  # fraction of output to military
+_MILITARY_FRACTION = 0.02    # fraction of output to military
+_INVESTMENT_FRACTION = 0.25  # fraction of profit reinvested into capital
 _MAINTENANCE_COST_FRACTION = 0.1  # fraction of IC value for maintenance
 _LABOR_COST_FRACTION = 0.15  # fraction of output as labor cost
 _RESOURCE_COST_FRACTION = 0.05  # fraction of output as resource extraction cost
@@ -87,11 +88,13 @@ class FinanceSector:
         interest_rate: float = _INTEREST_RATE,
         debt_repayment_time: float = _DEBT_REPAYMENT,
         military_fraction: float = _MILITARY_FRACTION,
+        investment_fraction: float = _INVESTMENT_FRACTION,
     ) -> None:
         self.initial_liquid_funds = initial_liquid_funds
         self.interest_rate = interest_rate
         self.debt_repayment_time = debt_repayment_time
         self.military_fraction = military_fraction
+        self.investment_fraction = investment_fraction
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -178,7 +181,7 @@ class FinanceSector:
 
         # ── Liquid Funds ODE ──────────────────────────────────────────
         # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS_AES
-        investments = profit * self.military_fraction  # re-investment fraction
+        investments = profit * self.investment_fraction
         dL = (profit
               + loan_taking_rate
               - investments
