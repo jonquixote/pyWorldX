@@ -277,9 +277,23 @@ class CapitalSector:
 
         investment_gate = esf * fin_res
 
+        # ── Energy sector IO draw (capital conservation) ──────────────
+        # Subtract energy sector investments before allocating remaining IO
+        fossil_inv = inputs.get(
+            "fossil_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        tech_inv = inputs.get(
+            "tech_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        sust_inv = inputs.get(
+            "sust_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        energy_sector_draw = fossil_inv + tech_inv + sust_inv
+        io_for_capital = max(io - energy_sector_draw, 0.0)
+
         # ── Investment and depreciation flows ─────────────────────────
-        ic_investment = io * fioai * investment_gate
-        sc_investment = io * fioas * investment_gate
+        ic_investment = io_for_capital * fioai * investment_gate
+        sc_investment = io_for_capital * fioas * investment_gate
         phi = depreciation_multiplier(maintenance_ratio)
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
@@ -320,6 +334,9 @@ class CapitalSector:
             "labor_force_multiplier",
             "energy_supply_factor",
             "financial_resilience",
+            "fossil_sector_investment",
+            "tech_sector_investment",
+            "sust_sector_investment",
         ]
 
     def declares_writes(self) -> list[str]:

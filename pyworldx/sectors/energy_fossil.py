@@ -88,6 +88,7 @@ class EnergyFossilSector:
             "fossil_output": Quantity(output, "energy_units"),
             "fossil_eroi": Quantity(eroi, "dimensionless"),
             "energy_demand_fossil": Quantity(energy_demand, "energy_units"),
+            "fossil_sector_investment": Quantity(investment, "capital_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -99,6 +100,7 @@ class EnergyFossilSector:
             "fossil_output",
             "fossil_eroi",
             "energy_demand_fossil",
+            "fossil_sector_investment",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
