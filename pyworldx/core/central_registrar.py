@@ -43,6 +43,7 @@ _OVERSHOOT_TOLERANCE = 1.0 / 512  # brief ceiling overshoot tolerance (1/512)
 #        = 1.13e11 abstract units ≡ 22 EJ/yr (historical EIA/BP baseline)
 # _EJ_SCALE = 22.0 / 1.13e11 ≈ 1.9469e-10
 _EJ_SCALE = 1.946903e-10
+EJ_SCALE = _EJ_SCALE  # public alias for tests and consumers
 
 # Shared-state keys that contribute to total energy supply
 _ENERGY_SUPPLY_KEYS = ("fossil_output", "sustainable_output", "technology_output")
@@ -227,6 +228,26 @@ class CentralRegistrar:
         """
         if not demands:
             return {}
+
+        # Demand-weighted fallback: when ALL sectors have default weights (1.0),
+        # no sector has declared Ability to Pay, so allocate proportional to demand.
+        # This gives every sector the same multiplier = total_supply / total_demand.
+        all_default = all(
+            d.liquid_funds == 1.0 and d.security_value == 1.0 for d in demands
+        )
+        if all_default:
+            total_demand = sum(d.demand for d in demands)
+            common_ratio = total_supply / max(total_demand, 1e-15)
+            multipliers: dict[str, float] = {}
+            for d in demands:
+                if common_ratio >= 1.0:
+                    mult = 1.0
+                elif common_ratio < 0.5:
+                    mult = max(0.0, common_ratio ** 2.0)
+                else:
+                    mult = common_ratio ** 1.5
+                multipliers[d.sector_name] = mult
+            return multipliers
 
         # Compute combined weights
         total_lf = sum(d.liquid_funds for d in demands)
