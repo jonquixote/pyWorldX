@@ -50,6 +50,7 @@ Thumbs.db
 
 # Hide all dot folders
 .*/
+!/.github/
 
 # Hide specific folders and files
 /plans/
