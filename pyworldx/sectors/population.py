@@ -240,12 +240,21 @@ class PopulationSector:
         m3 = table_lookup(life_expectancy, _M3_X, _M3_Y)
         m4 = table_lookup(life_expectancy, _M4_X, _M4_Y)
 
-        # Deaths
+        # Deaths from W3-03 age-specific mortality tables
         d1 = p1 * m1
         d2 = p2 * m2
         d3 = p3 * m3
         d4 = p4 * m4
-        total_deaths = d1 + d2 + d3 + d4
+        # Extra deaths from epidemic (published by seir.py as per-capita excess rate).
+        # SEIR tracks its own S/E/I/R stocks independently; adding here does not
+        # double-count because SEIR's cohort deaths do not flow back to P1-P4.
+        disease_death_rate = max(
+            inputs.get("disease_death_rate", Quantity(0.0, "per_year")).magnitude,
+            0.0,
+        )
+        pop = stocks["POP"].magnitude
+        extra_disease_deaths = pop * disease_death_rate
+        total_deaths = d1 + d2 + d3 + d4 + extra_disease_deaths
 
         # ── Maturation flows ──────────────────────────────────────────
         mat1 = p1 * (1.0 - m1) / 15.0   # 0-14 → 15-44
@@ -364,6 +373,7 @@ class PopulationSector:
             "service_output_per_capita",
             "toxin_health_multiplier",
             "toxin_fertility_multiplier",
+            "disease_death_rate",
         ]
 
     def declares_writes(self) -> list[str]:
