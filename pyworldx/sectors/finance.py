@@ -174,20 +174,27 @@ class FinanceSector:
         maintenance_ratio = actual_maintenance / max(required_maintenance, 1.0)
         maintenance_ratio = max(0.0, min(maintenance_ratio, 2.0))
 
-        # ── TNDS: Total Non-Discretionary Spending (placeholder for AES) 
+        # ── TNDS: Total Non-Discretionary Spending (AES + education + damages)
         tnds_aes = inputs.get(
             "tnds_aes", Quantity(0.0, "capital_units")
         ).magnitude
+        tnds_education = inputs.get(
+            "education_tnds", Quantity(0.0, "capital_units")
+        ).magnitude
+        tnds_damages = inputs.get(
+            "damages_tnds", Quantity(0.0, "capital_units")
+        ).magnitude
+        total_tnds = tnds_aes + tnds_education + tnds_damages
 
         # ── Liquid Funds ODE ──────────────────────────────────────────
-        # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS_AES
+        # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS
         investments = profit * self.investment_fraction
         dL = (profit
               + loan_taking_rate
               - investments
               - interest_payments
               - military_spending
-              - tnds_aes)
+              - total_tnds)
 
         # ── Debt Pool ODEs ────────────────────────────────────────────
         # General debt: new loans - amortization
@@ -228,6 +235,8 @@ class FinanceSector:
             "AL",
             "POP",
             "tnds_aes",
+            "education_tnds",
+            "damages_tnds",
         ]
 
     def declares_writes(self) -> list[str]:
