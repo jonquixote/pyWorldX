@@ -102,6 +102,15 @@ class ClimateSector:
             "supply_multiplier_climate", Quantity(1.0, "dimensionless")
         ).magnitude
 
+        # Aerosol quasi-equilibrium (tau ~2 weeks, so always at steady state).
+        # Compute FIRST so rf_aero uses the current-step A, not the stale stock value.
+        # Steady state: dA/dt = 0 → A = k_aero * io * tau_aero
+        A = _K_AERO * io * self.tau_aero * supply_mult
+        dA = 0.0  # Already at equilibrium
+
+        # Radiative forcing from aerosols (cooling effect)
+        rf_aero = _RF_AERO_COEFF * A
+
         # Radiative forcing from GHG: prefer authoritative value from pollution_ghg sector;
         # fall back to internal CO2-proxy derivation when that sector is absent.
         if "ghg_radiative_forcing" in inputs:
@@ -112,21 +121,11 @@ class ClimateSector:
                 max(co2 / _CO2_PREINDUSTRIAL, 1e-10)
             )
 
-        # Radiative forcing from aerosols (cooling, so negative)
-        rf_aero = _RF_AERO_COEFF * A
-
         # Temperature ODE
         dT = (
             self.climate_sensitivity * (rf_ghg - rf_aero)
             - _OCEAN_THERMAL_INERTIA * T
         )
-
-        # Aerosol: tau_aero is ~2 weeks, so aerosol is always at
-        # quasi-equilibrium with industrial output. Compute algebraically
-        # rather than integrating the stiff ODE.
-        # Steady state: dA/dt = 0 → A = k_aero * io * tau_aero
-        A = _K_AERO * io * self.tau_aero * supply_mult
-        dA = 0.0  # Already at equilibrium
 
         # Heat Shock Multiplier to Agriculture
         # 1.0 below threshold, drops to 0 at critical threshold (q73)
