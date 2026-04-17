@@ -286,6 +286,12 @@ class AgricultureSector:
 
         # ── Food production ───────────────────────────────────────────
         food = al * land_yield * _LFH * (1.0 - _PL)
+        # Subtract food lost in trade transit (spoilage published by regional_trade)
+        trade_food_loss = max(
+            inputs.get("trade_food_loss", Quantity(0.0, "food_units")).magnitude,
+            0.0,
+        )
+        food = max(food - trade_food_loss, 0.0)
         fpc = food / max(pop, 1.0)
 
         # ── Land dynamics ─────────────────────────────────────────────
@@ -338,6 +344,7 @@ class AgricultureSector:
             "energy_supply_factor",
             "soc_resilience_multiplier",
             "agriculture_tech_mult",
+            "trade_food_loss",
         ]
 
     def declares_writes(self) -> list[str]:

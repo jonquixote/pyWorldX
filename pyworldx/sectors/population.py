@@ -260,7 +260,17 @@ class PopulationSector:
         )
         pop = stocks["POP"].magnitude
         extra_disease_deaths = pop * disease_death_rate
-        total_deaths = d1 + d2 + d3 + d4 + extra_disease_deaths
+
+        # Migration stress mortality: mass displacement raises crude death rate.
+        # Scale: 1e9 displaced persons/yr → 0.01 additional per-capita death rate.
+        migration_flow = max(
+            inputs.get("total_migration_flow", Quantity(0.0, "persons_per_year")).magnitude,
+            0.0,
+        )
+        _MIGRATION_MORTALITY_SCALE = 1e-11  # per (person/yr) of flow
+        migration_deaths = pop * migration_flow * _MIGRATION_MORTALITY_SCALE
+
+        total_deaths = d1 + d2 + d3 + d4 + extra_disease_deaths + migration_deaths
 
         # ── Maturation flows ──────────────────────────────────────────
         mat1 = p1 * (1.0 - m1) / 15.0   # 0-14 → 15-44
@@ -381,6 +391,7 @@ class PopulationSector:
             "toxin_fertility_multiplier",
             "disease_death_rate",
             "gini_mortality_mult",
+            "total_migration_flow",
         ]
 
     def declares_writes(self) -> list[str]:
