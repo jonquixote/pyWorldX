@@ -95,8 +95,9 @@ class EcosystemServicesSector:
         ).magnitude
 
         # Temperature-dependent regeneration rate (piecewise quadratic, q72)
-        T_opt = 15.0  # optimal temp anomaly (°C)
-        T_crit = 35.0  # critical temp anomaly (°C)
+        # On the anomaly scale: pre-industrial (0°C) is optimal; 4°C is critical collapse.
+        T_opt = 0.0   # optimal temp anomaly (°C above pre-industrial)
+        T_crit = 4.0  # critical temp anomaly (°C) — IPCC 4°C scenario
         if temp_anomaly <= T_opt:
             temp_factor = 1.0
         elif temp_anomaly >= T_crit:
