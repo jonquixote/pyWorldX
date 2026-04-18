@@ -23,6 +23,14 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 
+class DataBridgeError(Exception):
+    """Raised when the aligned data store is missing or malformed.
+
+    Use this instead of letting raw FileNotFoundError propagate, so callers
+    can catch a single exception type for all DataBridge failures.
+    """
+
+
 # ── Entity-to-Engine mapping ──────────────────────────────────────────
 
 # Maps pipeline entity names to engine variable names.
@@ -169,6 +177,11 @@ class DataBridge:
         Returns:
             List of CalibrationTarget objects.
         """
+        if not aligned_dir.exists():
+            raise DataBridgeError(
+                f"Aligned data directory not found: {aligned_dir}. "
+                "Run the data pipeline first: python -m data_pipeline.run --align"
+            )
         try:
             from data_pipeline.storage.parquet_store import read_aligned
         except (ImportError, ModuleNotFoundError):
@@ -358,22 +371,60 @@ class DataBridge:
             coverage=coverage,
         )
 
+    def _clip_targets_to_window(
+        self,
+        targets: list[CalibrationTarget],
+        start_year: int,
+        end_year: int,
+    ) -> list[CalibrationTarget]:
+        """Return targets with years clipped to [start_year, end_year].
+
+        Targets with fewer than 3 points after clipping are dropped.
+        """
+        clipped: list[CalibrationTarget] = []
+        for t in targets:
+            mask = (t.years >= start_year) & (t.years <= end_year)
+            years = t.years[mask]
+            values = t.values[mask]
+            if len(years) < 3:
+                continue
+            clipped.append(
+                CalibrationTarget(
+                    variable_name=t.variable_name,
+                    years=years,
+                    values=values,
+                    unit=t.unit,
+                    weight=t.weight,
+                    source=t.source,
+                    nrmsd_method=t.nrmsd_method,
+                )
+            )
+        return clipped
+
     def build_objective(
         self,
         targets: list[CalibrationTarget],
         engine_factory: Callable[[dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]],
+        train_start: Optional[int] = None,
+        train_end: Optional[int] = None,
     ) -> Callable[[dict[str, float]], float]:
         """Build NRMSD objective function from targets.
 
         Args:
             targets: Calibration targets
-            engine_factory: Callable that takes parameter dict and returns
-                (trajectories_dict, time_index) tuple. This runs the engine
-                with the given parameters.
+            engine_factory: Callable(params) -> (trajectories, time_index)
+            train_start: If provided, clip targets to years >= train_start
+            train_end: If provided, clip targets to years <= train_end
 
         Returns:
-            Callable that maps parameter dict -> scalar NRMSD.
+            Callable mapping parameter dict -> scalar NRMSD.
         """
+        # Pre-clip to train window (no per-call overhead)
+        active_targets = targets
+        if train_start is not None or train_end is not None:
+            lo = train_start if train_start is not None else int(targets[0].years.min())
+            hi = train_end if train_end is not None else int(targets[0].years.max())
+            active_targets = self._clip_targets_to_window(targets, lo, hi)
 
         def objective(params: dict[str, float]) -> float:
             try:
@@ -381,10 +432,45 @@ class DataBridge:
             except Exception:
                 return float("inf")
 
-            result = self.compare(targets, trajectories, time_index)
+            result = self.compare(active_targets, trajectories, time_index)
             return result.composite_nrmsd
 
         return objective
+
+    def calculate_validation_score(
+        self,
+        targets: list[CalibrationTarget],
+        engine_factory: Callable[
+            [dict[str, float]],
+            tuple[dict[str, "np.ndarray[Any, Any]"], "np.ndarray[Any, Any]"],
+        ],
+        params: dict[str, float],
+        validate_start: int,
+        validate_end: int,
+    ) -> "BridgeResult":
+        """Evaluate NRMSD on the holdout validation window only.
+
+        Args:
+            targets: All calibration targets (clipped to validation years internally)
+            engine_factory: Callable(params) -> (trajectories, time_index)
+            params: Parameter dict to evaluate
+            validate_start: First year of the holdout window (inclusive)
+            validate_end: Last year of the holdout window (inclusive)
+
+        Returns:
+            BridgeResult computed on validation years only.
+        """
+        val_targets = self._clip_targets_to_window(targets, validate_start, validate_end)
+        try:
+            trajectories, time_index = engine_factory(params)
+        except Exception:
+            return BridgeResult(
+                per_variable_nrmsd={},
+                composite_nrmsd=float("nan"),
+                n_targets=0,
+                coverage={},
+            )
+        return self.compare(val_targets, trajectories, time_index)
 
     def _normalize_pair(
         self,

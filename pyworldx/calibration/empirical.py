@@ -49,6 +49,8 @@ class EmpiricalCalibrationReport:
     calibrated_parameters: dict[str, float] = field(default_factory=dict)
     converged: bool = False
     total_evaluations: int = 0
+    validation_nrmsd: Optional[float] = None   # holdout window NRMSD
+    overfit_flagged: bool = False               # True if validation degrades > overfit_threshold
 
 
 class EmpiricalCalibrationRunner:
@@ -282,8 +284,19 @@ class EmpiricalCalibrationRunner:
         if ref_result is not None:
             report.reference_result = ref_result
 
-        # ── Layer 2: Build objective and run pipeline ─────────────────
-        objective = self.bridge.build_objective(targets, engine_factory)
+        # ── Layer 2: Build objective and run pipeline ───────────────
+        # Build objective restricted to the train window (avoids look-ahead bias)
+        train_start: Optional[int] = None
+        train_end: Optional[int] = None
+        if cross_val_config is not None:
+            train_start = cross_val_config.train_start
+            train_end = cross_val_config.train_end
+
+        objective = self.bridge.build_objective(
+            targets, engine_factory,
+            train_start=train_start,
+            train_end=train_end,
+        )
 
         pipeline_report = run_calibration_pipeline(
             objective_fn=objective,
@@ -296,12 +309,12 @@ class EmpiricalCalibrationRunner:
         report.pipeline_report = pipeline_report
         report.total_evaluations = pipeline_report.total_evaluations
 
-        # ── Extract calibrated parameters ─────────────────────────────
+        # ── Extract calibrated parameters ─────────────────────────
         if pipeline_report.calibration is not None:
             report.calibrated_parameters = pipeline_report.calibration.parameters
             report.converged = pipeline_report.calibration.converged
 
-            # Evaluate calibrated params against empirical targets
+            # Evaluate calibrated params against empirical targets (all years)
             try:
                 trajectories, time_index = engine_factory(
                     report.calibrated_parameters
@@ -311,6 +324,27 @@ class EmpiricalCalibrationRunner:
                 )
             except Exception:
                 pass
+
+            # Validation score on holdout window
+            if cross_val_config is not None:
+                val_result = self.bridge.calculate_validation_score(
+                    targets,
+                    engine_factory,
+                    report.calibrated_parameters,
+                    validate_start=cross_val_config.validate_start,
+                    validate_end=cross_val_config.validate_end,
+                )
+                report.validation_nrmsd = val_result.composite_nrmsd
+
+                train_nrmsd = pipeline_report.calibration.total_nrmsd
+                if (
+                    np.isfinite(val_result.composite_nrmsd)
+                    and train_nrmsd > 0.0
+                ):
+                    degradation = val_result.composite_nrmsd / train_nrmsd - 1.0
+                    report.overfit_flagged = (
+                        degradation > cross_val_config.overfit_threshold
+                    )
 
         # ── Layer 3: USGS cross-validation (post-calibration) ──────────
         final_params = report.calibrated_parameters or defaults
