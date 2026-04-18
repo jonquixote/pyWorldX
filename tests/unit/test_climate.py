@@ -1,15 +1,12 @@
 """Unit tests for ClimateSector (100% line+branch coverage)."""
 from __future__ import annotations
 
-import math
 
 from pyworldx.core.quantities import Quantity
 from pyworldx.sectors.base import RunContext
 from pyworldx.sectors.climate import (
     ClimateSector,
-    _K_AERO, _TAU_AERO, _RF_AERO_COEFF,
-    _HEAT_SHOCK_THRESHOLD, _HEAT_SHOCK_CRITICAL,
-    _RF_GHG_COEFF, _CO2_PREINDUSTRIAL,
+    _K_AERO, _TAU_AERO, _HEAT_SHOCK_THRESHOLD, _HEAT_SHOCK_CRITICAL,
 )
 
 

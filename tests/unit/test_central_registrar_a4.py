@@ -1,7 +1,7 @@
 """Task A4: CentralRegistrar broadcasts global energy_supply_factor."""
 from __future__ import annotations
 
-from pyworldx.core.central_registrar import CentralRegistrar, EJ_SCALE
+from pyworldx.core.central_registrar import CentralRegistrar
 from pyworldx.core.quantities import Quantity
 
 

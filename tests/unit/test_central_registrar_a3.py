@@ -1,7 +1,6 @@
 """Task A3: CentralRegistrar demand-weighted fallback when weights default to 1.0."""
 from __future__ import annotations
 
-import pytest
 
 from pyworldx.core.central_registrar import CentralRegistrar, EJ_SCALE
 from pyworldx.core.quantities import Quantity
