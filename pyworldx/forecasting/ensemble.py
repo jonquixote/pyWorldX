@@ -120,7 +120,10 @@ class EnsembleSpec:
     threshold_queries: list[ThresholdQuery] = field(default_factory=list)
     seed: int = 42
     store_member_runs: bool = False
-    temporal_resolution: int = 1  # decimation step for Parquet export
+    temporal_resolution: int = 1        # decimation step for Parquet export
+    run_sobol: bool = False             # enable SALib Saltelli decomposition
+    sobol_n: int = 512                  # base N; total runs = N*(2D+2)
+    force_sobol: bool = False           # bypass 10 000-run safety cap
 
 
 @dataclass
@@ -144,6 +147,157 @@ class EnsembleResult:
                 f"Re-run the ensemble with the query declared."
             )
         return self.threshold_results[query_name].probability
+
+
+def _sobol_decompose(
+    spec: EnsembleSpec,
+    sector_factory: Any,
+    engine_kwargs: dict[str, Any],
+    all_trajectories: dict[str, list["np.ndarray[Any, Any]"]],
+) -> dict[str, dict[str, float]]:
+    """Run SALib Sobol variance decomposition over all distribution groups.
+
+    Runs N*(2D+2) Saltelli samples and uses SALib to compute first-order
+    S1 indices per parameter.  Groups parameters by UncertaintyType and
+    sums S1 within each group.
+
+    Constraints:
+      - Only ``DistributionType.UNIFORM`` is supported.
+      - Total runs = ``spec.sobol_n * (2*D + 2)``; must be ≤ 10 000
+        unless ``force_sobol=True``.
+
+    Returns:
+        ``{var: {"parameter": float, "exogenous_input": float,
+                 "initial_condition": float, "scenario": float}}``
+    """
+    try:
+        from SALib.sample import sobol as sobol_sample
+        from SALib.analyze import sobol as sobol_analyze
+    except ImportError as exc:
+        raise ImportError(
+            "SALib is required for Sobol decomposition. "
+            "Install with: poetry add SALib"
+        ) from exc
+
+    from pyworldx.core.engine import Engine
+
+    # Collect all distributions with their uncertainty type
+    all_dists: dict[str, tuple[ParameterDistribution, UncertaintyType]] = {}
+    for name, dist in spec.parameter_distributions.items():
+        all_dists[name] = (dist, UncertaintyType.PARAMETER)
+    for name, dist in spec.exogenous_perturbations.items():
+        all_dists[name] = (dist, UncertaintyType.EXOGENOUS_INPUT)
+    for name, dist in spec.initial_condition_perturbations.items():
+        all_dists[name] = (dist, UncertaintyType.INITIAL_CONDITION)
+
+    _zero: dict[str, float] = {
+        "parameter": 0.0, "scenario": 0.0,
+        "exogenous_input": 0.0, "initial_condition": 0.0,
+    }
+    if not all_dists:
+        return {var: dict(_zero) for var in all_trajectories}
+
+    # Validate: only UNIFORM distributions are supported
+    for name, (dist, _) in all_dists.items():
+        if dist.dist_type != DistributionType.UNIFORM:
+            raise ValueError(
+                f"Sobol decomposition requires UNIFORM distributions; "
+                f"'{name}' uses {dist.dist_type.value}. "
+                "Convert to UNIFORM or set run_sobol=False."
+            )
+
+    param_names = list(all_dists.keys())
+    D = len(param_names)
+    N = spec.sobol_n
+    total_runs = N * (2 * D + 2)
+
+    if total_runs > 10_000 and not spec.force_sobol:
+        raise ValueError(
+            f"Sobol run would require {total_runs:,} model evaluations "
+            f"(N={N}, D={D}).  This may take hours. "
+            "Reduce sobol_n or set force_sobol=True to bypass this guard."
+        )
+
+    bounds = [
+        [all_dists[n][0].params.get("low", 0.0),
+         all_dists[n][0].params.get("high", 1.0)]
+        for n in param_names
+    ]
+    problem: dict[str, Any] = {
+        "num_vars": D,
+        "names": param_names,
+        "bounds": bounds,
+    }
+    X = sobol_sample.sample(problem, N=N, calc_second_order=False)
+
+    # Run Saltelli samples
+    base_overrides = dict(spec.base_scenario.parameter_overrides)
+    Y: dict[str, list[float]] = {var: [] for var in all_trajectories}
+
+    for row in X:
+        overrides = dict(base_overrides)
+        for j, name in enumerate(param_names):
+            overrides[name] = float(row[j])
+        sectors = sector_factory(overrides)
+        engine = Engine(
+            sectors=sectors,
+            t_start=float(spec.base_scenario.start_year - 1900),
+            t_end=float(spec.base_scenario.end_year - 1900),
+            **engine_kwargs,
+        )
+        result = engine.run()
+        for var in list(Y.keys()):
+            if var in result.trajectories and len(result.trajectories[var]) > 0:
+                Y[var].append(float(result.trajectories[var][-1]))
+            else:
+                Y[var].append(float("nan"))
+
+    # Group by uncertainty type
+    param_group = [
+        n for n, (_, ut) in all_dists.items() if ut == UncertaintyType.PARAMETER
+    ]
+    exo_group = [
+        n for n, (_, ut) in all_dists.items() if ut == UncertaintyType.EXOGENOUS_INPUT
+    ]
+    ic_group = [
+        n for n, (_, ut) in all_dists.items()
+        if ut == UncertaintyType.INITIAL_CONDITION
+    ]
+
+    decomposition: dict[str, dict[str, float]] = {}
+
+    for var, y_vals in Y.items():
+        y_arr = np.array(y_vals, dtype=np.float64)
+        finite_mask = np.isfinite(y_arr)
+        if not finite_mask.any():
+            decomposition[var] = dict(_zero)
+            continue
+        # Replace NaN with mean so SALib sees no NaN in Y
+        y_arr = np.where(finite_mask, y_arr, float(np.nanmean(y_arr)))
+
+        # Skip SALib analysis when output has effectively zero variance.
+        # Floating-point arithmetic can produce std ≈ 3.5e-15 on arrays
+        # that are mathematically constant, which crashes SALib internally.
+        if np.std(y_arr) < 1e-8:
+            decomposition[var] = dict(_zero)
+            continue
+
+        Si = sobol_analyze.analyze(
+            problem, y_arr, calc_second_order=False
+        )
+        s1_vals = np.asarray(Si["S1"], dtype=np.float64).ravel()
+        s1_by_name = {
+            param_names[i]: max(0.0, float(s1_vals[i]))
+            for i in range(D)
+        }
+        decomposition[var] = {
+            "parameter": sum(s1_by_name.get(n, 0.0) for n in param_group),
+            "exogenous_input": sum(s1_by_name.get(n, 0.0) for n in exo_group),
+            "initial_condition": sum(s1_by_name.get(n, 0.0) for n in ic_group),
+            "scenario": 0.0,  # scenario uncertainty requires multi-scenario runs
+        }
+
+    return decomposition
 
 
 def run_ensemble(
@@ -271,19 +425,24 @@ def run_ensemble(
             member_count=hits,
         )
 
-    # ── Uncertainty decomposition (simplified) ───────────────────────
-    decomposition: dict[str, dict[str, float]] = {}
-    # TODO: Full decomposition requires tagged runs; for now report
-    # total variance attributable to parameter perturbations
-    for var_name, traj_list in all_trajectories.items():
-        arr = np.array(traj_list)
-        total_var = float(np.var(arr[:, -1]))  # variance at final time
-        decomposition[var_name] = {
-            "parameter": total_var,
-            "scenario": 0.0,
-            "exogenous_input": 0.0,
-            "initial_condition": 0.0,
-        }
+    # ── Uncertainty decomposition ────────────────────────────────────
+    decomposition: dict[str, dict[str, float]]
+    if spec.run_sobol:
+        decomposition = _sobol_decompose(
+            spec, sector_factory, engine_kwargs, all_trajectories
+        )
+    else:
+        # Simplified: attribute all terminal variance to parameter perturbations.
+        decomposition = {}
+        for var_name, traj_list in all_trajectories.items():
+            arr = np.array(traj_list)
+            total_var = float(np.var(arr[:, -1]))
+            decomposition[var_name] = {
+                "parameter": total_var,
+                "scenario": 0.0,
+                "exogenous_input": 0.0,
+                "initial_condition": 0.0,
+            }
 
     return EnsembleResult(
         members=members if spec.store_member_runs else None,
