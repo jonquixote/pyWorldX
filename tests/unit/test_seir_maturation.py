@@ -135,7 +135,7 @@ def test_seir_no_crash_with_zero_mat_flows() -> None:
         "P2": Quantity(0.7e9, "persons"),
         "P3": Quantity(0.3e9, "persons"),
         "P4": Quantity(0.25e9, "persons"),
-        "birth_rate": Quantity(5.0e7, "persons_per_year"),
+        "birth_rate": Quantity(0.03, "per_year"),
         "death_rate": Quantity(0.01, "per_year"),
     }
     out = s.compute(0.0, stocks, inputs, ctx)

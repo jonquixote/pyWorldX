@@ -376,7 +376,7 @@ class PopulationSector:
             "P2": Quantity(p2, "persons"),
             "P3": Quantity(p3, "persons"),
             "P4": Quantity(p4, "persons"),
-            "birth_rate": Quantity(births, "persons_per_year"),
+            "birth_rate": Quantity(births / max(pop, 1.0), "per_year"),
             "death_rate": Quantity(total_deaths, "persons_per_year"),
             "life_expectancy": Quantity(life_expectancy, "years"),
             "mat1": Quantity(mat1, "persons_per_year"),

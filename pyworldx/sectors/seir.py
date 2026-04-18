@@ -209,9 +209,6 @@ class SEIRModule:
             R_vals.append(r)
             I_total += iv
 
-        # Force of infection: beta * I_total / N
-        beta * I_total / max(N_total, 1.0)
-
         # Compute derivatives for each cohort
         outputs: dict[str, Quantity] = {}
         total_disease_excess_deaths: float = 0.0
