@@ -296,6 +296,7 @@ class CapitalSector:
         tech_cost_fraction = inputs.get(
             "tech_cost_fraction", Quantity(0.0, "dimensionless")
         ).magnitude
+        tech_cost_fraction = max(0.0, min(tech_cost_fraction, 1.0))  # clamp to valid fraction
         tech_rd_cost = io * tech_cost_fraction
 
         # ── Energy sector IO draw (capital conservation) ──────────────

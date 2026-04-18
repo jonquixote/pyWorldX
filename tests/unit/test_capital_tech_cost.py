@@ -36,7 +36,7 @@ def test_tech_cost_fraction_declared_as_read() -> None:
 
 
 def test_zero_tech_cost_fraction_unchanged() -> None:
-    """tech_cost_fraction=0 must produce same IO as when key is absent."""
+    """tech_cost_fraction=0 must produce same d_IC as when key is absent."""
     s = CapitalSector()
     ctx = _ctx()
     stocks = s.init_stocks(ctx)
@@ -44,7 +44,7 @@ def test_zero_tech_cost_fraction_unchanged() -> None:
     inputs_zero = {**_base_inputs(), "tech_cost_fraction": Quantity(0.0, "dimensionless")}
     out_no = s.compute(0.0, stocks, inputs_no_key, ctx)
     out_zero = s.compute(0.0, stocks, inputs_zero, ctx)
-    assert abs(out_no["industrial_output"].magnitude - out_zero["industrial_output"].magnitude) < 1.0
+    assert abs(out_no["d_IC"].magnitude - out_zero["d_IC"].magnitude) < 1.0
 
 
 def test_nonzero_tech_cost_reduces_io_for_capital() -> None:
