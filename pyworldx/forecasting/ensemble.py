@@ -120,6 +120,7 @@ class EnsembleSpec:
     threshold_queries: list[ThresholdQuery] = field(default_factory=list)
     seed: int = 42
     store_member_runs: bool = False
+    temporal_resolution: int = 1  # decimation step for Parquet export
 
 
 @dataclass
@@ -131,6 +132,9 @@ class EnsembleResult:
     threshold_results: dict[str, ThresholdQueryResult]
     uncertainty_decomposition: dict[str, dict[str, float]]
     manifest_refs: list[str] = field(default_factory=list)
+    time_axis: "np.ndarray[Any, Any]" = field(
+        default_factory=lambda: np.empty(0, dtype=float)
+    )
 
     def probability_of_threshold(self, query_name: str) -> float:
         """Access threshold probability (Section 10.7)."""
@@ -165,6 +169,7 @@ def run_ensemble(
     rng = np.random.default_rng(spec.seed)
     members: list[RunResult] = []
     all_trajectories: dict[str, list["np.ndarray[Any, Any]"]] = {}
+    time_axis: "np.ndarray[Any, Any] | None" = None
 
     # Pre-sample all perturbations
     param_samples: dict[str, "np.ndarray[Any, Any]"] = {}
@@ -192,6 +197,10 @@ def run_ensemble(
         )
         result = engine.run()
 
+        # Capture absolute year axis from first run
+        if time_axis is None:
+            time_axis = np.array(result.time_index) + 1900.0
+
         if spec.store_member_runs:
             members.append(result)
 
@@ -202,19 +211,26 @@ def run_ensemble(
             all_trajectories[var_name].append(traj)
 
     # ── Compute summary statistics (Section 10.6) ────────────────────
+    _time_axis: "np.ndarray[Any, Any]" = (
+        time_axis if time_axis is not None else np.empty(0, dtype=float)
+    )
     summary: dict[str, pd.DataFrame] = {}
     for var_name, traj_list in all_trajectories.items():
         arr = np.array(traj_list)  # (n_runs, n_timesteps)
-        summary[var_name] = pd.DataFrame({
-            "mean": np.mean(arr, axis=0),
-            "median": np.median(arr, axis=0),
-            "p05": np.percentile(arr, 5, axis=0),
-            "p25": np.percentile(arr, 25, axis=0),
-            "p75": np.percentile(arr, 75, axis=0),
-            "p95": np.percentile(arr, 95, axis=0),
-            "min": np.min(arr, axis=0),
-            "max": np.max(arr, axis=0),
-        })
+        idx = pd.Index(_time_axis, name="year") if len(_time_axis) > 0 else None
+        summary[var_name] = pd.DataFrame(
+            {
+                "mean": np.mean(arr, axis=0),
+                "median": np.median(arr, axis=0),
+                "p05": np.percentile(arr, 5, axis=0),
+                "p25": np.percentile(arr, 25, axis=0),
+                "p75": np.percentile(arr, 75, axis=0),
+                "p95": np.percentile(arr, 95, axis=0),
+                "min": np.min(arr, axis=0),
+                "max": np.max(arr, axis=0),
+            },
+            index=idx,
+        )
 
     # ── Evaluate threshold queries ───────────────────────────────────
     threshold_results: dict[str, ThresholdQueryResult] = {}
@@ -274,4 +290,5 @@ def run_ensemble(
         summary=summary,
         threshold_results=threshold_results,
         uncertainty_decomposition=decomposition,
+        time_axis=_time_axis,
     )
