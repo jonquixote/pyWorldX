@@ -292,6 +292,12 @@ class CapitalSector:
 
         investment_gate = esf * fin_res
 
+        # Tech R&D cost: fraction of IO spent on technology advancement
+        tech_cost_fraction = inputs.get(
+            "tech_cost_fraction", Quantity(0.0, "dimensionless")
+        ).magnitude
+        tech_rd_cost = io * tech_cost_fraction
+
         # ── Energy sector IO draw (capital conservation) ──────────────
         # Subtract energy sector investments before allocating remaining IO
         fossil_inv = inputs.get(
@@ -304,7 +310,7 @@ class CapitalSector:
             "sust_sector_investment", Quantity(0.0, "capital_units")
         ).magnitude
         energy_sector_draw = fossil_inv + tech_inv + sust_inv
-        io_for_capital = max(io - energy_sector_draw, 0.0)
+        io_for_capital = max(io - energy_sector_draw - tech_rd_cost, 0.0)
 
         # ── Investment and depreciation flows ─────────────────────────
         ic_investment = io_for_capital * fioai * investment_gate
@@ -362,6 +368,7 @@ class CapitalSector:
             "sust_sector_investment",
             "trapped_capital",
             "resource_share_bot90",
+            "tech_cost_fraction",
         ]
 
     def declares_writes(self) -> list[str]:
