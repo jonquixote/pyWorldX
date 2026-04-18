@@ -1,0 +1,49 @@
+{
+  "project_name": "pyWorldX",
+  "description": "Modular, unit-safe, auditable forecasting platform for long-horizon global systems modeling",
+  "language": "python",
+  "framework": null,
+  "test_runner": "pytest",
+  "package_manager": "poetry",
+  "python_version": "3.11",
+  "setup_date": "2026-04-14",
+  "settings": {
+    "coverage_threshold": 90,
+    "coverage_mode": "very_strict",
+    "external_tools": [
+      "github_copilot",
+      "other_llm"
+    ],
+    "ci_cd": "github_actions",
+    "type_checking": {
+      "enabled": true,
+      "tool": "mypy",
+      "mode": "strict"
+    },
+    "linting": {
+      "enabled": true,
+      "tool": "ruff",
+      "line_length": 100
+    }
+  },
+  "test_config": {
+    "test_paths": [
+      "tests",
+      "data_pipeline/tests"
+    ],
+    "pytest_options": "-v --tb=short",
+    "markers": {
+      "network": "marks tests that require network access (deselect with '-m \"not network\"')"
+    }
+  },
+  "validation_checklist": [
+    "Type hints present and mypy strict passes",
+    "Tests written (TDD approach)",
+    "Coverage >= 90% for changed modules",
+    "Ruff lint checks pass",
+    "Existing tests still pass",
+    "No unused imports or dead code"
+  ],
+  "venv_python_path": ".venv/bin/python",
+  "notes": "Use full venv python path for test execution, not poetry run or bare python. This ensures isolation and proper error reporting."
+}

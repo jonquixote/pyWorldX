@@ -1,0 +1,70 @@
+# Phase 2 Progress & Missing Requirements (q71–q84)
+
+**Date:** 2026-04-15
+**Goal:** Assess the state of Phase 2 Implementation against the biophysical realism and rigorous data mappings outlined in the latest Q&A (q71–q84).
+
+## Executive Summary
+The foundation of Phase 2 is solid. All 593 tests are currently passing, and the core structural additions (e.g., CentralRegistrar, Human Capital, SEIR, Phosphorus, Climate, Ecosystem Services) have been implemented and integrated. 
+
+However, many of the specific, rigorous biophysical requirements mandated by the Q&A synthesis (particularly Q71-Q84) remain **incomplete or unstarted**. The current implementations rely on placeholder simplifications instead of the rigorous analytical and empirical models specified.
+
+---
+
+## 1. 100% Done
+
+* **Implicit Energy Footprint for Human Capital (Q82):**
+  - **Status:** Complete.
+  - **Details:** `HumanCapitalSector` correctly avoids broadcasting explicit energy demands. Its physical requirements are successfully assumed to be implicitly covered by the Service Sector's energy mandate.
+* **Supply Multiplier Propagation / Priority Chains (Q78):**
+  - **Status:** Complete.
+  - **Details:** `CentralRegistrar` successfully implements "Ability to Pay" and "Security Value" priority chains. It correctly applies the super-linear decline logic ($SM = \text{ratio}^{1.5}$ between 50-100%) and cascading failure logic ($SM = \text{ratio}^{2.0}$ below 50%).
+* **Sector-Port Encapsulation for Tests (Q83):**
+  - **Status:** Complete.
+  - **Details:** Unit tests correctly use mock `RunContext` setups (e.g., `tests/conftest.py`) to verify sector boundary conditions and behaviors in isolation.
+
+---
+
+## 2. Partially Done
+
+* **Human Capital ($H$) Calibration (Q79):**
+  - **Status:** Partially Done.
+  - **Details:** The `EducationRate` hack (multiplying by `LaborForce`) has been successfully removed in `human_capital.py` (`edu_rate = table_lookup(sopc)`). However, there is no precise analytical calibration present to ensure $H$ perfectly balances the base `SkillDegradationRate` at pre-industrial equilibrium.
+
+---
+
+## 3. Not Started / Missing
+
+### A. Production Function Refactoring (Q81 & Q71)
+* **Status:** Not Started.
+* **Details:** 
+  * **Capital Sector:** The production function in `capital.py` (line 191) is currently a simple multiplier: `io = ic * (1.0 - fcaor) * cuf / self.icor * h_mult`. This was explicitly flagged as unacceptable in Q81. It must be refactored to a true Cobb-Douglas production function: $Q = A \cdot K^\alpha \cdot R^\beta \cdot H^{(1-\alpha-\beta)}$.
+  * **Agriculture Sector:** The agricultural production function must also be updated to a Cobb-Douglas form based on Energy (60%), Materials (20%), and Phosphorus (20%) as mandated by Q71/Q84.
+
+### B. Analytical Test Stability / Substep Ratio (Q80)
+* **Status:** Not Started.
+* **Details:** `HumanCapitalSector` currently sets `timestep_hint = None`, meaning it runs at the default master timestep ($dt=1.0$). High-frequency dynamics in $H$ (and SEIR) require a high-frequency substep ratio (e.g., 64:1 or 512:1) to pass analytical tests with the required $1e^{-4}$ tolerance.
+
+### C. 5-Stock Global Carbon Model (NOAA/GCB Data) (Q84 / Q75)
+* **Status:** Not Started.
+* **Details:** The current `PollutionGHGModule` uses a highly simplified single-stock (`ghg_stock`) model with a hardcoded 100-year delay. Q84 and Q75 explicitly mandate a **5-stock global carbon model** (Atmosphere, Land Biomass, Soil Organic Carbon, Ocean Dissolved Carbon, and Deep Ocean/Sediment) calibrated against NOAA/GCB data to drive the Climate proxy correctly.
+
+### D. EIA Energy Baseline Calibration (Q84 / Q77)
+* **Status:** Not Started.
+* **Details:** While the 65% thermodynamic ceiling is enforced in the `CentralRegistrar`, it is operating on abstract dimensionless ratios/outputs. Sectoral energy intensity parameters calibrated to real-world EIA physical units (e.g., a 600 EJ/yr global baseline) are missing. 
+
+### E. USDA SSURGO Phosphorus & SOC Limits (Q84 / Q71)
+* **Status:** Not Started.
+* **Details:** 
+  * `PhosphorusSector` uses a rough global estimate (`_P_SOC0 = 14000.0`) and simple geological weathering. 
+  * The **Soil Organic Carbon (SOC) "living matrix"** mechanics are entirely missing.
+  * The **"rooting depth resilience threshold"**—which should trigger a non-linear collapse in the Land Yield Multiplier during climate shocks—has not been implemented in the `AgricultureSector`.
+
+---
+
+## Recommended Next Steps
+
+1. **P0:** Refactor the Capital and Agriculture production functions to the mandated **Cobb-Douglas** forms.
+2. **P0:** Implement the **5-stock Carbon Model** in `pollution_ghg.py` and remove the single-stock simplification.
+3. **P0:** Apply EIA **Energy Baseline Calibration** to the energy sectors and CentralRegistrar.
+4. **P1:** Implement the **SOC Living Matrix** and **Rooting Depth Threshold** in Agriculture/Phosphorus.
+5. **P1:** Update the `timestep_hint` (substep ratio) for Human Capital and tighten the analytical test criteria.
