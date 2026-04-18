@@ -45,19 +45,19 @@ Thumbs.db
 .pytest_cache/
 
 # AI Notebook Output
-# /Notebook Conversations/
-# /Notebook Conversations/Raw_Q_and_A/
+/Notebook Conversations/
+/Notebook Conversations/Raw_Q_and_A/
 
-# # Hide all dot folders
-# .*/
-# !/.github/
+# Hide all dot folders
+.*/
+!/.github/
 
-# # Hide specific folders and files
-# /plans/
-# /ask_notebook.py
+# Hide specific folders and files
+/plans/
+/ask_notebook.py
 
-# # Hide all top-level markdown files except explicit ones
-# /*.md
-# !/README.md
-# !/pyWorldX_spec_0.2.9.0.md
-# !/latest.md
+# Hide all top-level markdown files except explicit ones
+/*.md
+!/README.md
+!/pyWorldX_spec_0.2.9.0.md
+!/latest.md
