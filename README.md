@@ -1,17 +1,17 @@
 # pyWorldX
 
-Modular, unit-safe, auditable forecasting platform for long-horizon global systems modeling, compliant with the World3-03 specification.
+Modular, unit-safe, auditable forecasting platform for long-horizon global systems modeling, compliant with the World3-03 specification and extended for modern biophysical limits.
 
 ## Overview
 
-pyWorldX is an advanced Python rewrite of the classic World3 model (Meadows et al., 1972/2004), designed for modern computational science. It provides a robust, strictly typed, and auditable framework for global systems simulation, featuring:
+pyWorldX is an advanced Python rewrite and structural evolution of the classic World3 model (Meadows et al., 1972/2004), designed for modern computational science. It provides a robust, strictly typed, and auditable framework for global systems simulation, featuring:
 
 - **Unit Safety**: Built on `Pint` for strict dimensional analysis across all operations, eliminating abstract scalar translation errors.
+- **Biophysical Realism (Phase 2)**: Extended with a 5-stock carbon cycle, thermodynamic energy limits (EROI), ecosystem services thresholds, and cross-sector constraints (e.g., heat-shock mortality, inequality taxes).
 - **Algebraic Loop Resolution**: Automated detection and numerical resolution of dependency cycles.
 - **Multi-rate Integration**: Supports `timestep_hint` sector configuration, allowing fast and slow dynamics to run at independent integration rates within a master orchestration step.
-- **Auditable Provenance**: Emits structural `CausalTraceRef` objects to track variable state directly to underlying spec equations.
-- **Real-World Data Pipelines**: Modular data ingestion mapping 32 API sources directly to pyWorldX ontology entities to support continuous automated recalibration.
-- **Extensible Ontology**: A canonical variable namespace allowing external models (e.g., WILIAM IAM model) to interoperate modularly with core system dynamics.
+- **Advanced Analytics & Calibration**: State-of-the-art calibration pipeline utilizing **Optuna** for Bayesian Global Search (TPE) and **SALib** for Sobol variance decomposition and Saltelli sampling.
+- **Real-World Data Pipelines**: Modular data ingestion mapping 37 API sources directly to pyWorldX ontology entities to support continuous automated recalibration.
 
 ## Quick Start
 1. Ensure you have Python 3.11+ and [Poetry](https://python-poetry.org/) installed.
@@ -21,7 +21,7 @@ pyWorldX is an advanced Python rewrite of the classic World3 model (Meadows et a
    # Core engine only
    poetry install
 
-   # Core engine + data pipeline
+   # Core engine + data pipeline + analytics (Optuna/SALib)
    poetry install --extras pipeline
    ```
 4. Run the test suite:
@@ -29,9 +29,17 @@ pyWorldX is an advanced Python rewrite of the classic World3 model (Meadows et a
    poetry run pytest
    ```
 
+## Calibration & Ensemble Analytics
+
+pyWorldX features a mature, industry-standard calibration and forecasting layer:
+
+- **DataBridge Validation**: Bridges empirical data directly into the calibration pipeline with built-in ML-style train/validation holdout windows and overfit guards.
+- **Multi-Stage Optimization**: Parameter searches begin with Structural Identifiability profiling, move to Morris screening, explore globally with **Optuna TPE**, and fine-tune locally with bounded Nelder-Mead.
+- **Ensemble Forecasting**: Probabilistic Monte Carlo ensembles support Saltelli sampling and S1/ST Sobol variance decomposition (via **SALib**) to bucket uncertainties into `Parameter`, `Exogenous`, and `Initial Condition` classes. Outputs are automatically decimated into compact `.parquet` records for dashboarding.
+
 ## Data Pipeline
 
-pyWorldX ships with a **reference data pipeline** that collects, transforms, and aligns real-world data from 37 sources (World Bank, NOAA, EDGAR, OWID, FRED, and more) into NRMSD-ready calibration series. The pipeline is optional — the core engine works with any data source that produces a `ConnectorResult` (see `pyworldx/data/connectors/base.py`).
+pyWorldX ships with a **reference data pipeline** that collects, transforms, and aligns real-world data from 37 sources (World Bank, NOAA, EDGAR, OWID, FRED, USGS, and more) into NRMSD-ready calibration series. The pipeline is optional — the core engine works with any data source that produces a `ConnectorResult`.
 
 Install with pipeline dependencies, then run:
 
@@ -52,12 +60,11 @@ See [`data_pipeline/README.md`](data_pipeline/README.md) for full documentation,
 
 ## Repository Structure
 
-- `pyworldx/core/`: The core simulation engine, including multi-rate scheduling (`multirate.py`), abstract dependencies (`graph.py`), balance auditing (`balance.py`), and snapshot tracing (`engine.py`).
-- `pyworldx/sectors/`: Sub-model implementations (e.g., Capital, Population, Pollution, Resources, Agriculture, Adaptive Technology). Sub-models are strictly bounded via explicitly declared `reads`/`writes` namespaces.
-- `pyworldx/ontology/`: A canonical dimensional alignment architecture governing standard variable naming schemas.
-- `pyworldx/adapters/`: Interfaces for structural backward compatibility (e.g., World3Adapter) and interoperability with other IAM ecosystems (e.g., `wiliam/`).
-- `pyworldx/calibration/`: Pipeline logic for NRMSD validation against historical targets, sensitivity analysis (Sobol, Morris), and dynamic threshold mapping.
-- `data_pipeline/`: Reference data pipeline — 37 connectors, 9 transforms, ontology alignment, and NRMSD calibration export. Optional; install with `poetry install --extras pipeline`.
+- `pyworldx/core/`: The core simulation engine, including multi-rate scheduling, abstract dependencies, balance auditing, and snapshot tracing.
+- `pyworldx/sectors/`: Sub-model implementations (e.g., Capital, Population, Pollution, Resources, Agriculture, SEIR). Sub-models are strictly bounded via explicitly declared `reads`/`writes` namespaces.
+- `pyworldx/calibration/`: Pipeline logic for empirical data validation, Optuna Bayesian optimization, and Morris/Nelder-Mead searches.
+- `pyworldx/forecasting/`: Probabilistic ensemble runners with SALib variance decomposition and scenario threshold queries.
+- `data_pipeline/`: Reference data pipeline — 37 connectors, 9 transforms, ontology alignment, and NRMSD calibration export.
 - `pyworldx/observability/`: Comprehensive recording logic, including runtime assertions, dependency provenance tracking, and reporting.
 
 ## Key Design Principles
