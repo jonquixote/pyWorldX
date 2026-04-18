@@ -46,3 +46,37 @@ def test_weighted_allocation_differs_when_weights_set() -> None:
     mb = shared["supply_multiplier_big"].magnitude
     ms = shared["supply_multiplier_small"].magnitude
     assert mb > ms, "big sector with higher liquid_funds must get bigger multiplier"
+
+
+def test_demand_proportional_when_all_weights_equal() -> None:
+    """When all LF=SV=1, allocation must be demand-proportional, not equal-share."""
+    from pyworldx.core.central_registrar import CentralRegistrar, EnergyDemand
+    cr = CentralRegistrar(enabled=True)
+    demands = [
+        EnergyDemand(sector_name="big", demand=90.0, liquid_funds=1.0, security_value=1.0),
+        EnergyDemand(sector_name="small", demand=10.0, liquid_funds=1.0, security_value=1.0),
+    ]
+    mults = cr._allocate(total_supply=50.0, demands=demands)
+    # demand-proportional: big gets 45, small gets 5 → both at 50% of demand → equal multipliers
+    assert abs(mults["big"] - mults["small"]) < 0.01, (
+        f"Multipliers must be equal under demand-proportional: big={mults['big']:.3f} small={mults['small']:.3f}"
+    )
+
+
+def test_high_liquid_funds_gets_more_allocation() -> None:
+    """A sector with 2× liquid_funds must receive a larger multiplier."""
+    from pyworldx.core.central_registrar import CentralRegistrar, EnergyDemand
+    cr = CentralRegistrar(enabled=True)
+    demands = [
+        EnergyDemand(sector_name="rich", demand=50.0, liquid_funds=2.0, security_value=1.0),
+        EnergyDemand(sector_name="poor", demand=50.0, liquid_funds=1.0, security_value=1.0),
+    ]
+    mults = cr._allocate(total_supply=60.0, demands=demands)
+    assert mults["rich"] > mults["poor"], "Higher liquid_funds must yield higher multiplier"
+
+
+def test_allocate_handles_no_demands() -> None:
+    """Empty demands list must return empty dict (no crash)."""
+    from pyworldx.core.central_registrar import CentralRegistrar
+    cr = CentralRegistrar(enabled=True)
+    assert cr._allocate(total_supply=100.0, demands=[]) == {}

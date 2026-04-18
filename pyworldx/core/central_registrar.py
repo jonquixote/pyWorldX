@@ -59,6 +59,10 @@ class DemandRecord:
     security_value: float = 0.0  # capital/strategic priority weight
 
 
+#: Public alias — tests and callers may use EnergyDemand or DemandRecord interchangeably.
+EnergyDemand = DemandRecord
+
+
 @dataclass
 class SupplyResolution:
     """Result of the CentralRegistrar's demand resolution pass."""
@@ -198,7 +202,7 @@ class CentralRegistrar:
             )
 
         # ── 4. Allocate based on Ability to Pay + Security Value ─────
-        multipliers = self._allocate(demands, total_supply)
+        multipliers = self._allocate(total_supply, demands)
 
         # ── 5. Write multipliers back to shared state ────────────────
         for sector_name, mult in multipliers.items():
@@ -215,15 +219,16 @@ class CentralRegistrar:
 
     def _allocate(
         self,
-        demands: list[DemandRecord],
         total_supply: float,
+        demands: list[DemandRecord],
     ) -> dict[str, float]:
         """Allocate constrained supply based on Ability to Pay + Security Value.
 
         NOT equal scaling — sectors with higher Liquid Funds and higher
         Security Value get proportionally larger shares of the supply.
 
-        Combined weight = 0.5 * normalized(liquid_funds) + 0.5 * normalized(security_value)
+        weight_i = demand_i * (0.5 * lf_norm_i + 0.5 * sv_norm_i)
+        When all LF=SV=1 (default), weight ∝ demand → demand-proportional allocation.
         Then: allocation_i = weight_i / Σ(weight_j) * total_supply
         Finally: multiplier_i uses super-linear decline (q78 resolution):
           - SM = (allocation/demand)^1.5 for 50%–100% ratio
@@ -233,37 +238,17 @@ class CentralRegistrar:
         if not demands:
             return {}
 
-        # Demand-weighted fallback: when ALL sectors have default weights (1.0),
-        # no sector has declared Ability to Pay, so allocate proportional to demand.
-        # This gives every sector the same multiplier = total_supply / total_demand.
-        all_default = all(
-            d.liquid_funds == 1.0 and d.security_value == 1.0 for d in demands
-        )
-        if all_default:
-            total_demand = sum(d.demand for d in demands)
-            common_ratio = total_supply / max(total_demand, 1e-15)
-            multipliers: dict[str, float] = {}
-            for d in demands:
-                if common_ratio >= 1.0:
-                    mult = 1.0
-                elif common_ratio < 0.5:
-                    mult = max(0.0, common_ratio ** 2.0)
-                else:
-                    mult = common_ratio ** 1.5
-                multipliers[d.sector_name] = mult
-            return multipliers
-
-        # Compute combined weights
+        # Demand-weighted ability-to-pay allocation.
+        # When all LF=SV=1 (default), weight ∝ demand → demand-proportional.
+        # When LF/SV differ, larger/richer sectors get proportionally more.
         total_lf = sum(d.liquid_funds for d in demands)
         total_sv = sum(d.security_value for d in demands)
 
         weights: dict[str, float] = {}
         for d in demands:
-            # Normalize each component (handle zero-sum edge case)
             lf_norm = d.liquid_funds / max(total_lf, 1e-15)
             sv_norm = d.security_value / max(total_sv, 1e-15)
-            # Equal weighting of Ability to Pay and Security Value
-            weights[d.sector_name] = 0.5 * lf_norm + 0.5 * sv_norm
+            weights[d.sector_name] = d.demand * (0.5 * lf_norm + 0.5 * sv_norm)
 
         total_weight = sum(weights.values())
 
