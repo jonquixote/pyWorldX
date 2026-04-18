@@ -96,7 +96,7 @@ class FinanceSector:
         self.debt_repayment_time = debt_repayment_time
         self.military_fraction = military_fraction
         self.investment_fraction = investment_fraction
-        self.leverage_fraction = leverage_fraction
+        self.leverage_fraction = max(0.0, min(leverage_fraction, 1.0))
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -281,6 +281,8 @@ class FinanceSector:
                 "interest_rate",
                 "debt_repayment_time",
                 "military_fraction",
+                "investment_fraction",
+                "leverage_fraction",
             ],
             "conservation_groups": [],
             "observables": [

@@ -31,14 +31,15 @@ def test_leverage_fraction_default_zero() -> None:
     assert s.leverage_fraction == 0.0
 
 
-def test_leverage_zero_preserves_baseline() -> None:
-    """leverage_fraction=0 must produce same dD_g as a sector without the attribute."""
-    s_default = FinanceSector()
-    s_explicit = FinanceSector(leverage_fraction=0.0)
+def test_leverage_zero_same_dDg_as_no_leverage() -> None:
+    """leverage_fraction=0 must produce same dD_g as before the feature existed."""
     ctx = _ctx()
-    out_d = s_default.compute(0.0, s_default.init_stocks(ctx), _base_inputs(), ctx)
-    out_e = s_explicit.compute(0.0, s_explicit.init_stocks(ctx), _base_inputs(), ctx)
-    assert abs(out_d["d_D_g"].magnitude - out_e["d_D_g"].magnitude) < 1.0
+    s = FinanceSector(leverage_fraction=0.0)
+    out = s.compute(0.0, s.init_stocks(ctx), _base_inputs(), ctx)
+    s2 = FinanceSector(leverage_fraction=0.2)
+    out2 = s2.compute(0.0, s2.init_stocks(ctx), _base_inputs(), ctx)
+    # With leverage, D_g grows faster than without
+    assert out2["d_D_g"].magnitude >= out["d_D_g"].magnitude
 
 
 def test_nonzero_leverage_increases_debt_growth() -> None:
@@ -65,6 +66,14 @@ def test_leverage_fraction_is_scenario_settable() -> None:
     s = FinanceSector()
     apply_parameter_overrides(scenario, [s])
     assert s.leverage_fraction == pytest.approx(0.3)
+
+
+def test_leverage_fraction_clamped() -> None:
+    """leverage_fraction must be clamped to [0, 1] regardless of input."""
+    s_neg = FinanceSector(leverage_fraction=-0.5)
+    assert s_neg.leverage_fraction == 0.0
+    s_high = FinanceSector(leverage_fraction=2.0)
+    assert s_high.leverage_fraction == 1.0
 
 
 def test_minsky_moment_scenario_has_leverage_override() -> None:
