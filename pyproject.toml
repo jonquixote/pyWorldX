@@ -19,6 +19,7 @@ openpyxl = {version = "^3.1.5", optional = true}
 requests = {version = "^2.33.1", optional = true}
 duckdb = {version = "^1.5.1", optional = true}
 python-dotenv = {version = "^1.2.2", optional = true}
+optuna = "^4.8.0"
 
 [tool.poetry.extras]
 pipeline = ["typer", "pyarrow", "openpyxl", "requests", "duckdb", "python-dotenv"]

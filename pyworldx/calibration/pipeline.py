@@ -155,6 +155,55 @@ def _nelder_mead_optimize(
     return best_params, float(f_vals[best_idx]), iteration + 1, converged
 
 
+def _bayesian_optimize(
+    objective_fn: Callable[[dict[str, float]], float],
+    initial_params: dict[str, float],
+    bounds: dict[str, tuple[float, float]],
+    parameter_names: list[str],
+    n_trials: int = 100,
+    timeout: int = 600,
+    seed: int = 42,
+) -> tuple[dict[str, float], float, int]:
+    """Bayesian global optimization using Optuna TPE sampler.
+
+    Searches the parameter space defined by `bounds` for `parameter_names`
+    using the Tree-structured Parzen Estimator. Non-screened parameters
+    remain at their values in `initial_params`.
+
+    Args:
+        objective_fn: maps parameter dict → scalar (lower is better)
+        initial_params: starting values for all parameters (including non-optimized)
+        bounds: {name: (lo, hi)} for all registry parameters
+        parameter_names: subset to optimize
+        n_trials: maximum number of objective evaluations
+        timeout: wall-clock limit in seconds
+        seed: reproducibility seed for TPESampler
+
+    Returns:
+        (best_params, best_objective_value, n_trials_done) where best_params
+        contains ALL parameters (non-screened ones unchanged from initial_params).
+    """
+    import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+    def _optuna_objective(trial: "optuna.Trial") -> float:
+        params = dict(initial_params)
+        for name in parameter_names:
+            lo, hi = bounds[name]
+            params[name] = trial.suggest_float(name, lo, hi)
+        return objective_fn(params)
+
+    sampler = optuna.samplers.TPESampler(seed=seed)
+    study = optuna.create_study(direction="minimize", sampler=sampler)
+    study.optimize(_optuna_objective, n_trials=n_trials, timeout=timeout)
+
+    best_params = dict(initial_params)
+    for name in parameter_names:
+        best_params[name] = study.best_params[name]
+
+    return best_params, study.best_value, len(study.trials)
+
+
 def run_calibration_pipeline(
     objective_fn: Callable[[dict[str, float]], float],
     registry: ParameterRegistry,
@@ -166,13 +215,16 @@ def run_calibration_pipeline(
     optimize_max_iter: int = 200,
     optimize_tol: float = 1e-6,
     seed: int = 42,
+    bayesian_n_trials: int = 100,
+    bayesian_timeout: int = 600,
 ) -> PipelineReport:
     """Run the full calibration pipeline (Section 9.3).
 
     Step 0: Profile likelihood identifiability pre-screen
     Step 1: Morris elementary effects screening
-    Step 2: Deterministic NRMSD optimization (Nelder-Mead)
-    Step 3: Sobol variance decomposition
+    Step 2: Bayesian global search (Optuna TPE)
+    Step 3: Deterministic NRMSD optimization (Nelder-Mead) from Bayesian best
+    Step 4: Sobol variance decomposition
 
     Args:
         objective_fn: maps parameter dict → scalar NRMSD objective
@@ -185,6 +237,8 @@ def run_calibration_pipeline(
         optimize_max_iter: max optimizer iterations
         optimize_tol: optimizer convergence tolerance
         seed: random seed
+        bayesian_n_trials: Optuna TPE trial budget (0 to skip Bayesian step)
+        bayesian_timeout: Optuna wall-clock timeout in seconds
 
     Returns:
         PipelineReport with all intermediate results
@@ -232,12 +286,26 @@ def run_calibration_pipeline(
         threshold_fraction=morris_threshold
     )
 
-    # ── Step 2: Deterministic optimization ───────────────────────────
-    # Start from defaults, optimize only screened parameters
+    # ── Step 2: Bayesian global search (over screened parameters) ────
     initial = dict(defaults)
+    if report.screened_parameters and bayesian_n_trials > 0:
+        bayesian_params, _, n_bayesian_actual = _bayesian_optimize(
+            objective_fn,
+            initial,
+            bounds,
+            report.screened_parameters,
+            n_trials=bayesian_n_trials,
+            timeout=bayesian_timeout,
+            seed=seed,
+        )
+        report.total_evaluations += n_bayesian_actual  # actual completed trials
+    else:
+        bayesian_params = initial
+
+    # ── Step 3: Local fine-tuning from Bayesian best ─────────────────
     best_params, best_obj, iters, converged = _nelder_mead_optimize(
         objective_fn,
-        initial,
+        bayesian_params,  # start from Bayesian best, not defaults
         bounds,
         report.screened_parameters,
         max_iter=optimize_max_iter,
@@ -255,7 +323,7 @@ def run_calibration_pipeline(
         converged=converged,
     )
 
-    # ── Step 3: Sobol analysis on screened set ───────────────────────
+    # ── Step 4: Sobol analysis on screened set ───────────────────────
     report.sobol = run_sobol_analysis(
         objective_fn,
         registry,
