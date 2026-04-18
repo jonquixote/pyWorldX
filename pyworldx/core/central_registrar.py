@@ -267,7 +267,7 @@ class CentralRegistrar:
 
         total_weight = sum(weights.values())
 
-        multipliers: dict[str, float] = {}
+        multipliers = {}
         for d in demands:
             w = weights[d.sector_name] / max(total_weight, 1e-15)
             allocation = w * total_supply
