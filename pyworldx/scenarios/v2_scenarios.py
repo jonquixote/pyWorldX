@@ -95,6 +95,7 @@ def minsky_moment() -> Scenario:
         parameter_overrides={
             # Accelerate debt accumulation
             "finance.interest_rate": 0.06,
+            "finance.leverage_fraction": 0.2,
         },
         tags=["v2", "minsky", "stress_test"],
     )

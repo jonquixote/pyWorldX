@@ -89,12 +89,14 @@ class FinanceSector:
         debt_repayment_time: float = _DEBT_REPAYMENT,
         military_fraction: float = _MILITARY_FRACTION,
         investment_fraction: float = _INVESTMENT_FRACTION,
+        leverage_fraction: float = 0.0,
     ) -> None:
         self.initial_liquid_funds = initial_liquid_funds
         self.interest_rate = interest_rate
         self.debt_repayment_time = debt_repayment_time
         self.military_fraction = military_fraction
         self.investment_fraction = investment_fraction
+        self.leverage_fraction = leverage_fraction
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -156,10 +158,14 @@ class FinanceSector:
         # Interest payments = total_debt × interest_rate
         interest_payments = total_debt * self.interest_rate
 
+        # ── Investment computation for leverage term ──────────────────
+        # Required early for loan_taking_rate that includes leverage term
+        investments = profit * self.investment_fraction
+
         # Loan availability gated by governance multiplier
         gov_mult = governance_multiplier(debt_to_gdp)
         loan_deficit = max(-L, 0.0)  # only borrow when L < 0 or threatened
-        loan_taking_rate = loan_deficit * gov_mult
+        loan_taking_rate = (loan_deficit + investments * self.leverage_fraction) * gov_mult
 
         # ── Financial Resilience ──────────────────────────────────────
         # When ΣV_c < Debt → investment rate → 0 (Minsky Moment)
@@ -188,7 +194,6 @@ class FinanceSector:
 
         # ── Liquid Funds ODE ──────────────────────────────────────────
         # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS
-        investments = profit * self.investment_fraction
         dL = (profit
               + loan_taking_rate
               - investments
