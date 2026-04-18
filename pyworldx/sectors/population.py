@@ -379,6 +379,9 @@ class PopulationSector:
             "birth_rate": Quantity(births, "persons_per_year"),
             "death_rate": Quantity(total_deaths, "persons_per_year"),
             "life_expectancy": Quantity(life_expectancy, "years"),
+            "mat1": Quantity(mat1, "persons_per_year"),
+            "mat2": Quantity(mat2, "persons_per_year"),
+            "mat3": Quantity(mat3, "persons_per_year"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -404,6 +407,9 @@ class PopulationSector:
             "birth_rate",
             "death_rate",
             "life_expectancy",
+            "mat1",
+            "mat2",
+            "mat3",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
