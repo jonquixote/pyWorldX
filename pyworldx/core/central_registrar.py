@@ -43,6 +43,7 @@ _OVERSHOOT_TOLERANCE = 1.0 / 512  # brief ceiling overshoot tolerance (1/512)
 #        = 1.13e11 abstract units ≡ 22 EJ/yr (historical EIA/BP baseline)
 # _EJ_SCALE = 22.0 / 1.13e11 ≈ 1.9469e-10
 _EJ_SCALE = 1.946903e-10
+EJ_SCALE = _EJ_SCALE  # public alias for tests and consumers
 
 # Shared-state keys that contribute to total energy supply
 _ENERGY_SUPPLY_KEYS = ("fossil_output", "sustainable_output", "technology_output")
@@ -56,6 +57,10 @@ class DemandRecord:
     demand: float  # absolute energy demand units
     liquid_funds: float = 0.0  # Ability to Pay
     security_value: float = 0.0  # capital/strategic priority weight
+
+
+#: Public alias — tests and callers may use EnergyDemand or DemandRecord interchangeably.
+EnergyDemand = DemandRecord
 
 
 @dataclass
@@ -173,6 +178,10 @@ class CentralRegistrar:
             total_demand, "EJ_per_yr"
         )
 
+        # Global energy supply factor: ratio of available supply to total demand (capped at 1.0)
+        esf = min(total_supply / max(total_demand, 1e-15), 1.0)
+        shared["energy_supply_factor"] = Quantity(esf, "dimensionless")
+
         # ── 3. Check ceiling ───────────────────────────────────────
         ceiling_breached = total_demand > total_supply * (
             1.0 + self.overshoot_tolerance
@@ -193,7 +202,7 @@ class CentralRegistrar:
             )
 
         # ── 4. Allocate based on Ability to Pay + Security Value ─────
-        multipliers = self._allocate(demands, total_supply)
+        multipliers = self._allocate(total_supply, demands)
 
         # ── 5. Write multipliers back to shared state ────────────────
         for sector_name, mult in multipliers.items():
@@ -210,15 +219,16 @@ class CentralRegistrar:
 
     def _allocate(
         self,
-        demands: list[DemandRecord],
         total_supply: float,
+        demands: list[DemandRecord],
     ) -> dict[str, float]:
         """Allocate constrained supply based on Ability to Pay + Security Value.
 
         NOT equal scaling — sectors with higher Liquid Funds and higher
         Security Value get proportionally larger shares of the supply.
 
-        Combined weight = 0.5 * normalized(liquid_funds) + 0.5 * normalized(security_value)
+        weight_i = demand_i * (0.5 * lf_norm_i + 0.5 * sv_norm_i)
+        When all LF=SV=1 (default), weight ∝ demand → demand-proportional allocation.
         Then: allocation_i = weight_i / Σ(weight_j) * total_supply
         Finally: multiplier_i uses super-linear decline (q78 resolution):
           - SM = (allocation/demand)^1.5 for 50%–100% ratio
@@ -228,21 +238,21 @@ class CentralRegistrar:
         if not demands:
             return {}
 
-        # Compute combined weights
+        # Demand-weighted ability-to-pay allocation.
+        # When all LF=SV=1 (default), weight ∝ demand → demand-proportional.
+        # When LF/SV differ, larger/richer sectors get proportionally more.
         total_lf = sum(d.liquid_funds for d in demands)
         total_sv = sum(d.security_value for d in demands)
 
         weights: dict[str, float] = {}
         for d in demands:
-            # Normalize each component (handle zero-sum edge case)
             lf_norm = d.liquid_funds / max(total_lf, 1e-15)
             sv_norm = d.security_value / max(total_sv, 1e-15)
-            # Equal weighting of Ability to Pay and Security Value
-            weights[d.sector_name] = 0.5 * lf_norm + 0.5 * sv_norm
+            weights[d.sector_name] = d.demand * (0.5 * lf_norm + 0.5 * sv_norm)
 
         total_weight = sum(weights.values())
 
-        multipliers: dict[str, float] = {}
+        multipliers = {}
         for d in demands:
             w = weights[d.sector_name] / max(total_weight, 1e-15)
             allocation = w * total_supply

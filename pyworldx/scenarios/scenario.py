@@ -154,6 +154,23 @@ class Scenario:
         )
 
 
+def apply_parameter_overrides(scenario: "Scenario", sectors: list[Any]) -> None:
+    """Mutate sector instances in-place with scenario.parameter_overrides.
+
+    Format: "{sector_name}.{attr}" → value
+    Silently skips unknown sectors or attributes.
+    """
+    for dotted_key, value in scenario.parameter_overrides.items():
+        if "." not in dotted_key:
+            continue
+        sector_name, attr = dotted_key.split(".", 1)
+        target = next((s for s in sectors if s.name == sector_name), None)
+        if target is None:
+            continue
+        if hasattr(target, attr):
+            setattr(target, attr, value)
+
+
 # ── Built-in scenarios (Section 11.3) ────────────────────────────────
 
 

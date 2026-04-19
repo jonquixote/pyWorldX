@@ -249,7 +249,19 @@ class RegionalTradeSector:
                 regional_pop[i], "persons"
             )
 
+        # Aggregate scalar migration signal for population sector
+        total_migration_flow = float(migration_flows.sum())
+
+        # Food lost to transport spoilage (sent but not received)
+        trade_food_loss = float(total_trade_volume * self.transport_loss)
+
         # Write trade and migration flows
+        outputs["total_migration_flow"] = Quantity(
+            total_migration_flow, "persons_per_year"
+        )
+        outputs["trade_food_loss"] = Quantity(
+            trade_food_loss, "food_units"
+        )
         outputs["energy_demand_regional_trade"] = Quantity(
             energy_demand, "energy_units"
         )
@@ -286,6 +298,8 @@ class RegionalTradeSector:
             "supply_multiplier_regional_trade",
             "lifeboating_active",
             "total_trade_volume",
+            "total_migration_flow",
+            "trade_food_loss",
         ])
         return writes
 

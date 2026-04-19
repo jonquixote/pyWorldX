@@ -169,6 +169,14 @@ class SEIRModule:
                 )
             pop_by_cohort.append(max(p, 1.0))  # Avoid division by zero
 
+        # Maturation flows from PopulationSector (persons/year aging into next cohort)
+        mat_vals = [
+            inputs.get("mat1", Quantity(0.0, "persons_per_year")).magnitude,
+            inputs.get("mat2", Quantity(0.0, "persons_per_year")).magnitude,
+            inputs.get("mat3", Quantity(0.0, "persons_per_year")).magnitude,
+            0.0,  # C4 (65+): no out-flow
+        ]
+
         # Read birth and death rates
         birth_rate = inputs.get(
             "birth_rate", Quantity(0.03, "per_year")
@@ -201,11 +209,9 @@ class SEIRModule:
             R_vals.append(r)
             I_total += iv
 
-        # Force of infection: beta * I_total / N
-        beta * I_total / max(N_total, 1.0)
-
         # Compute derivatives for each cohort
         outputs: dict[str, Quantity] = {}
+        total_disease_excess_deaths: float = 0.0
 
         for i, label in enumerate(_COHORT_NAMES):
             s = S_vals[i]
@@ -232,12 +238,25 @@ class SEIRModule:
             deaths_e = death_rate * e
             deaths_i = death_rate * iv * 1.5  # Higher mortality for infected
             deaths_r = death_rate * r
+            total_disease_excess_deaths += death_rate * iv * 0.5  # excess above background
+
+            # Proportional aging: fraction of this cohort that ages into next
+            out_frac = mat_vals[i] / max(pop, 1.0)
+            if i > 0:
+                prev_pop = pop_by_cohort[i - 1]
+                in_frac = mat_vals[i - 1] / max(prev_pop, 1.0)
+                aging_in_s = S_vals[i - 1] * in_frac
+                aging_in_e = E_vals[i - 1] * in_frac
+                aging_in_i = I_vals[i - 1] * in_frac
+                aging_in_r = R_vals[i - 1] * in_frac
+            else:
+                aging_in_s = aging_in_e = aging_in_i = aging_in_r = 0.0
 
             # SEIR dynamics
-            dS = births - foi_c * s - deaths_s
-            dE = foi_c * s - self.sigma * e - deaths_e
-            dI = self.sigma * e - self.gamma * iv - deaths_i
-            dR = self.gamma * iv - deaths_r
+            dS = births - foi_c * s - deaths_s - s * out_frac + aging_in_s
+            dE = foi_c * s - self.sigma * e - deaths_e - e * out_frac + aging_in_e
+            dI = self.sigma * e - self.gamma * iv - deaths_i - iv * out_frac + aging_in_i
+            dR = self.gamma * iv - deaths_r - r * out_frac + aging_in_r
 
             # Clamp derivatives to prevent negative stocks
             if s <= 0.0 and dS < 0:
@@ -286,6 +305,9 @@ class SEIRModule:
         )
         outputs["infected_count"] = Quantity(I_total, "persons")
         outputs["reproduction_number"] = Quantity(R_eff, "dimensionless")
+        outputs["disease_death_rate"] = Quantity(
+            total_disease_excess_deaths / max(N_total, 1.0), "per_year"
+        )
 
         # Write S/E/I/R stocks to shared for recording
         for i, label in enumerate(_COHORT_NAMES):
@@ -302,6 +324,9 @@ class SEIRModule:
             "P1", "P2", "P3", "P4",
             "birth_rate",
             "death_rate",
+            "mat1",
+            "mat2",
+            "mat3",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -315,6 +340,7 @@ class SEIRModule:
             "labor_force_multiplier",
             "infected_count",
             "reproduction_number",
+            "disease_death_rate",
         ])
         return writes
 

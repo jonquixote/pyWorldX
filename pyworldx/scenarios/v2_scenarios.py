@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from pyworldx.scenarios.scenario import Scenario
+from pyworldx.scenarios.scenario import PolicyEvent, PolicyShape, Scenario
 
 
 # ── Scenario 1: Carrington Event ──────────────────────────────────────
@@ -36,6 +36,8 @@ def carrington_event(
     scenario documents the intent. Full execution requires adding
     a stock-destruction mechanism to the engine.
     """
+    # Relative time: destruction_year - 1900 (engine uses t=0→1900)
+    t_event = float(destruction_year - 1900)
     return Scenario(
         name="carrington_event",
         description=(
@@ -47,9 +49,29 @@ def carrington_event(
         ),
         start_year=1900,
         end_year=2200,
-        # Stock destruction requires engine-level support (v2 feature).
-        # When implemented: PolicyEvent targeting "IC" with magnitude=-50% at t_start.
-        policy_events=[],
+        policy_events=[
+            # Simulate EMP-induced grid destruction: 5-year energy supply disruption
+            # (direct IC stock destruction requires engine v3 stock-mutation API)
+            PolicyEvent(
+                target="supply_multiplier_fossil",
+                shape=PolicyShape.STEP,
+                t_start=t_event,
+                t_end=t_event + 5.0,
+                magnitude=-0.7,
+                description=(
+                    f"70% fossil energy disruption from year {destruction_year} "
+                    "for 5 years (EMP grid collapse proxy)"
+                ),
+            ),
+            PolicyEvent(
+                target="supply_multiplier_technology",
+                shape=PolicyShape.STEP,
+                t_start=t_event,
+                t_end=t_event + 5.0,
+                magnitude=-0.8,
+                description="80% technology energy disruption (electronics-dependent systems destroyed)",
+            ),
+        ],
         tags=["v2", "carrington", "stock_destruction", "stress_test"],
     )
 
@@ -73,6 +95,7 @@ def minsky_moment() -> Scenario:
         parameter_overrides={
             # Accelerate debt accumulation
             "finance.interest_rate": 0.06,
+            "finance.leverage_fraction": 0.2,
         },
         tags=["v2", "minsky", "stress_test"],
     )
@@ -138,11 +161,27 @@ def absolute_decoupling() -> Scenario:
             "resources.fcaor_min": 0.05,
             "resources.fcaor_max": 0.05,
         },
-        # Overrides 3-5 require v2 engine features:
-        # - energy_ceiling_enabled = 0 (CentralRegistrar toggle)
-        # - tnds_rd = 0 (TNDS parameter)
-        # - phosphorus_recycling_rate = 1.0 (phosphorus sector parameter)
-        policy_events=[],
+        policy_events=[
+            # Override 3 (partial): ramp fossil supply to near-zero by 2100 (t=200)
+            # simulating "unlimited clean energy" by eliminating fossil constraints
+            PolicyEvent(
+                target="supply_multiplier_fossil",
+                shape=PolicyShape.RAMP,
+                t_start=0.0,
+                t_end=200.0,
+                rate=-1.0 / 200.0,
+                description="Ramp fossil supply multiplier to 0 over 200 years (energy ceiling disabled proxy)",
+            ),
+            # Override 3 (complementary): ramp sustainable energy up
+            PolicyEvent(
+                target="supply_multiplier_sustainable",
+                shape=PolicyShape.RAMP,
+                t_start=0.0,
+                t_end=200.0,
+                rate=2.0 / 200.0,
+                description="Ramp sustainable energy multiplier to 3× over 200 years (unlimited clean energy)",
+            ),
+        ],
         tags=["v2", "decoupling", "null_hypothesis"],
     )
 
@@ -206,9 +245,32 @@ def energiewende(
         ),
         start_year=1900,
         end_year=2200,
-        # Time-varying fossil phaseout requires RAMP policy on energy mix parameter.
-        # When implemented: PolicyEvent with shape=RAMP, rate=0.9/40.
-        policy_events=[],
+        policy_events=[
+            # Ramp fossil supply multiplier from 1.0 → 0.1 over the phaseout window
+            PolicyEvent(
+                target="supply_multiplier_fossil",
+                shape=PolicyShape.RAMP,
+                t_start=float(fossil_phaseout_start - 1900),
+                t_end=float(fossil_phaseout_end - 1900),
+                rate=-0.9 / (fossil_phaseout_end - fossil_phaseout_start),
+                description=(
+                    f"Fossil phaseout: 90% reduction in fossil supply "
+                    f"between {fossil_phaseout_start} and {fossil_phaseout_end}"
+                ),
+            ),
+            # Ramp sustainable supply multiplier to compensate
+            PolicyEvent(
+                target="supply_multiplier_sustainable",
+                shape=PolicyShape.RAMP,
+                t_start=float(fossil_phaseout_start - 1900),
+                t_end=float(fossil_phaseout_end - 1900),
+                rate=2.0 / (fossil_phaseout_end - fossil_phaseout_start),
+                description=(
+                    f"Renewable scale-up: 2× sustainable supply multiplier "
+                    f"between {fossil_phaseout_start} and {fossil_phaseout_end}"
+                ),
+            ),
+        ],
         tags=["v2", "energiewende", "transition"],
     )
 

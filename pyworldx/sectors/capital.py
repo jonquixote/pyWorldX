@@ -115,6 +115,7 @@ _CD_ALPHA = 0.25     # physical capital elasticity
 _CD_BETA = 0.20      # resource/energy elasticity
 _CD_GAMMA = 0.55     # human capital elasticity (1 - α - β)
 _CD_TFP = 1.924445e8  # total factor productivity, calibrated to IO(1900)=6.65e10
+_ENERGY_INTENSITY_CAPITAL = 1.5  # energy_units demanded per industrial_output_unit
 
 # Indicated service output per capita: ISOPC(IOPC)
 # MDL: ISOPCT  X = IOPC, from 0 to 1600 step 200
@@ -153,6 +154,7 @@ class CapitalSector:
     scor: float = _SCOR1
     alic: float = _ALIC1
     alsc: float = _ALSC1
+    resource_elasticity: float = _CD_BETA  # Cobb-Douglas β; mutable for scenarios
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -228,13 +230,28 @@ class CapitalSector:
         r_input = max(1.0 - fcaor, 1e-6)
         h_input = max(h_raw, 1e-6)
 
-        io = (
+        io_raw = (
             _CD_TFP
             * k_input ** _CD_ALPHA
-            * r_input ** _CD_BETA
+            * r_input ** self.resource_elasticity
             * h_input ** _CD_GAMMA
             * cuf
         )
+
+        # Gini inequality tax: high inequality (low resource_share_bot90) reduces
+        # effective labor productivity because the working majority is resource-starved.
+        # Neutral = 0.50; egalitarian (>0.50) yields a small bonus; oligarchic (<0.50) penalty.
+        resource_share_bot90 = inputs.get(
+            "resource_share_bot90", Quantity(0.50, "dimensionless")
+        ).magnitude
+        resource_share_bot90 = max(0.0, min(resource_share_bot90, 1.0))
+        _INEQ_COEFF = 0.5  # 1% output change per 2pp shift in resource_share
+        inequality_labor_mult = max(
+            0.5,
+            min(1.5, 1.0 + _INEQ_COEFF * (resource_share_bot90 - 0.50)),
+        )
+
+        io = io_raw * inequality_labor_mult
         iopc = io / max(pop, 1.0)
 
         # ── Service output ────────────────────────────────────────────
@@ -261,15 +278,60 @@ class CapitalSector:
         # FIOAI: industrial investment is the residual
         fioai = max(1.0 - fioaa - fioas - fioac, 0.0)
 
+        # Energy supply constraint: scale new investments when supply is insufficient
+        esf = inputs.get(
+            "energy_supply_factor", Quantity(1.0, "dimensionless")
+        ).magnitude
+        esf = max(0.0, min(esf, 1.0))
+
+        # Financial resilience: gate investment when balance sheets are stressed
+        fin_res = inputs.get(
+            "financial_resilience", Quantity(1.0, "dimensionless")
+        ).magnitude
+        fin_res = max(0.0, min(fin_res, 1.0))
+
+        investment_gate = esf * fin_res
+
+        # Tech R&D cost: fraction of IO spent on technology advancement
+        tech_cost_fraction = inputs.get(
+            "tech_cost_fraction", Quantity(0.0, "dimensionless")
+        ).magnitude
+        tech_cost_fraction = max(0.0, min(tech_cost_fraction, 1.0))  # clamp to valid fraction
+        tech_rd_cost = io * tech_cost_fraction
+
+        # ── Energy sector IO draw (capital conservation) ──────────────
+        # Subtract energy sector investments before allocating remaining IO
+        fossil_inv = inputs.get(
+            "fossil_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        tech_inv = inputs.get(
+            "tech_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        sust_inv = inputs.get(
+            "sust_sector_investment", Quantity(0.0, "capital_units")
+        ).magnitude
+        energy_sector_draw = fossil_inv + tech_inv + sust_inv
+        io_for_capital = max(io - energy_sector_draw - tech_rd_cost, 0.0)
+
         # ── Investment and depreciation flows ─────────────────────────
-        ic_investment = io * fioai
-        sc_investment = io * fioas
+        ic_investment = io_for_capital * fioai * investment_gate
+        sc_investment = io_for_capital * fioas * investment_gate
         phi = depreciation_multiplier(maintenance_ratio)
         ic_depreciation = (ic / self.alic) * phi
         sc_depreciation = (sc / self.alsc) * phi
 
+        # Trapped capital refund: tech metals scarcity strands energy investment;
+        # those funds return to the productive capital pool
+        trapped_capital_refund = inputs.get(
+            "trapped_capital", Quantity(0.0, "capital_units")
+        ).magnitude
+
+        energy_demand_capital = io * _ENERGY_INTENSITY_CAPITAL
+
         return {
-            "d_IC": Quantity(ic_investment - ic_depreciation, "capital_units"),
+            "d_IC": Quantity(
+                ic_investment - ic_depreciation + trapped_capital_refund, "capital_units"
+            ),
             "d_SC": Quantity(sc_investment - sc_depreciation, "capital_units"),
             "d_LUFD": Quantity(d_lufd, "dimensionless"),
             "d_IOPCD": Quantity(d_iopcd, "industrial_output_units"),
@@ -282,6 +344,7 @@ class CapitalSector:
             "frac_io_to_consumption": Quantity(fioac, "dimensionless"),
             "labor_force": Quantity(labor_force, "persons"),
             "capacity_utilization_fraction": Quantity(cuf, "dimensionless"),
+            "energy_demand_capital": Quantity(energy_demand_capital, "energy_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -299,6 +362,14 @@ class CapitalSector:
             "maintenance_ratio",
             "human_capital_multiplier",
             "labor_force_multiplier",
+            "energy_supply_factor",
+            "financial_resilience",
+            "fossil_sector_investment",
+            "tech_sector_investment",
+            "sust_sector_investment",
+            "trapped_capital",
+            "resource_share_bot90",
+            "tech_cost_fraction",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -316,6 +387,7 @@ class CapitalSector:
             "frac_io_to_consumption",
             "labor_force",
             "capacity_utilization_fraction",
+            "energy_demand_capital",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

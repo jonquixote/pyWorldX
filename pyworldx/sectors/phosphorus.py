@@ -102,7 +102,6 @@ class PhosphorusSector:
         return {
             "P_soc": Quantity(self.initial_p_soc, "megatonnes_P"),
             "PRR": Quantity(self.initial_prr, "dimensionless"),
-            "SOC": Quantity(self.initial_soc, "Gt_C"),
         }
 
     def compute(
@@ -114,7 +113,9 @@ class PhosphorusSector:
     ) -> dict[str, Quantity]:
         P_soc = stocks["P_soc"].magnitude
         PRR = stocks["PRR"].magnitude
-        SOC = stocks["SOC"].magnitude
+        # SOC is now authoritative from pollution_ghg.py (C_soc stock).
+        # Fall back to initial value when running without that sector.
+        SOC = inputs.get("C_soc", Quantity(self.initial_soc, "GtC")).magnitude
 
         io = inputs.get(
             "industrial_output", Quantity(7.9e11, "industrial_output_units")
@@ -214,7 +215,6 @@ class PhosphorusSector:
         return {
             "d_P_soc": Quantity(dP_soc, "megatonnes_P"),
             "d_PRR": Quantity(dPRR, "dimensionless"),
-            "d_SOC": Quantity(dSOC, "Gt_C"),
             "phosphorus_mining_rate": Quantity(p_mining, "megatonnes_P_per_yr"),
             "phosphorus_recycling_rate": Quantity(
                 p_recycling, "megatonnes_P_per_yr"
@@ -238,13 +238,13 @@ class PhosphorusSector:
             "supply_multiplier_phosphorus",
             "pollution_index",
             "frac_io_to_agriculture",
+            "C_soc",
         ]
 
     def declares_writes(self) -> list[str]:
         return [
             "P_soc",
             "PRR",
-            "SOC",
             "phosphorus_mining_rate",
             "phosphorus_recycling_rate",
             "energy_demand_phosphorus",
@@ -281,10 +281,9 @@ class PhosphorusSector:
                 "phosphorus_availability",
                 "energy_demand_phosphorus",
                 "soc_resilience_multiplier",
-                "SOC",
             ],
             "unit_notes": (
                 "P_soc in megatonnes P, PRR dimensionless 0-1, "
-                "SOC in Gt C, energy in energy_units"
+                "SOC read from pollution_ghg C_soc (GtC), energy in energy_units"
             ),
         }

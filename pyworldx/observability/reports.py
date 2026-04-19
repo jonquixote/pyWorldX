@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -104,14 +105,18 @@ def build_ensemble_report(
     threshold_results: dict[str, Any] | None = None,
     manifest: RunManifest | None = None,
     ensemble_size: int = 0,
+    output_dir: Path | None = None,
+    temporal_resolution: int = 1,
 ) -> ForecastReport:
     """Build a forecast report from an ensemble result.
 
     Args:
-        summary: per-variable DataFrames with mean, median, percentiles
+        summary: per-variable DataFrames indexed by year with mean, median, percentiles
         threshold_results: threshold query results
         manifest: optional RunManifest for provenance
         ensemble_size: number of ensemble members
+        output_dir: if provided, write ensemble_trajectories.parquet here
+        temporal_resolution: decimation step for Parquet (1 = all rows, 5 = every 5th)
     """
     report = ForecastReport(
         report_type="ensemble",
@@ -121,7 +126,7 @@ def build_ensemble_report(
     if manifest is not None:
         report.manifest = manifest.to_dict()
 
-    # Extract final-time percentile bands
+    # Extract final-time percentile bands (uses full-resolution data)
     for var, df in summary.items():
         if df.empty:
             continue
@@ -147,4 +152,38 @@ def build_ensemble_report(
             else:
                 report.threshold_results[name] = {"raw": str(tr)}
 
+    # Write Parquet export (decimated, does not affect peak detection above)
+    if output_dir is not None:
+        _write_parquet(summary, output_dir, temporal_resolution, report)
+
     return report
+
+
+def _write_parquet(
+    summary: dict[str, pd.DataFrame],
+    output_dir: Path,
+    temporal_resolution: int,
+    report: ForecastReport,
+) -> None:
+    """Write long-format Parquet with columns (year, variable, p05, median, p95, min, max)."""
+    stat_cols = ["p05", "median", "p95", "min", "max"]
+    frames = []
+    for var, df in summary.items():
+        if df.empty:
+            continue
+        present = [c for c in stat_cols if c in df.columns]
+        dec = df.iloc[::max(temporal_resolution, 1)][present].reset_index()
+        if "year" in dec.columns:
+            dec["year"] = dec["year"].astype(int)
+        dec.insert(0, "variable", var)
+        frames.append(dec)
+    if not frames:
+        return
+    out_path = output_dir / "ensemble_trajectories.parquet"
+    try:
+        pd.concat(frames, ignore_index=True).to_parquet(out_path, index=False)
+    except ImportError:
+        report.warnings.append(
+            "pyarrow not installed; ensemble_trajectories.parquet not written. "
+            "Install with: poetry install -E pipeline"
+        )

@@ -40,7 +40,8 @@ _DP0 = 0.0             # initial Pension Debt
 _DEBT_REPAYMENT = 30.0  # debt amortization time (years)
 _INTEREST_RATE = 0.03   # annual interest rate on total debt
 _DEBT_GDP_CEILING = 1.5  # 150% Debt-to-GDP ceiling
-_MILITARY_FRACTION = 0.02  # fraction of output to military
+_MILITARY_FRACTION = 0.02    # fraction of output to military
+_INVESTMENT_FRACTION = 0.25  # fraction of profit reinvested into capital
 _MAINTENANCE_COST_FRACTION = 0.1  # fraction of IC value for maintenance
 _LABOR_COST_FRACTION = 0.15  # fraction of output as labor cost
 _RESOURCE_COST_FRACTION = 0.05  # fraction of output as resource extraction cost
@@ -87,11 +88,15 @@ class FinanceSector:
         interest_rate: float = _INTEREST_RATE,
         debt_repayment_time: float = _DEBT_REPAYMENT,
         military_fraction: float = _MILITARY_FRACTION,
+        investment_fraction: float = _INVESTMENT_FRACTION,
+        leverage_fraction: float = 0.0,
     ) -> None:
         self.initial_liquid_funds = initial_liquid_funds
         self.interest_rate = interest_rate
         self.debt_repayment_time = debt_repayment_time
         self.military_fraction = military_fraction
+        self.investment_fraction = investment_fraction
+        self.leverage_fraction = max(0.0, min(leverage_fraction, 1.0))
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
         return {
@@ -153,10 +158,14 @@ class FinanceSector:
         # Interest payments = total_debt × interest_rate
         interest_payments = total_debt * self.interest_rate
 
+        # ── Investment computation for leverage term ──────────────────
+        # Required early for loan_taking_rate that includes leverage term
+        investments = profit * self.investment_fraction
+
         # Loan availability gated by governance multiplier
         gov_mult = governance_multiplier(debt_to_gdp)
         loan_deficit = max(-L, 0.0)  # only borrow when L < 0 or threatened
-        loan_taking_rate = loan_deficit * gov_mult
+        loan_taking_rate = (loan_deficit + investments * self.leverage_fraction) * gov_mult
 
         # ── Financial Resilience ──────────────────────────────────────
         # When ΣV_c < Debt → investment rate → 0 (Minsky Moment)
@@ -171,20 +180,26 @@ class FinanceSector:
         maintenance_ratio = actual_maintenance / max(required_maintenance, 1.0)
         maintenance_ratio = max(0.0, min(maintenance_ratio, 2.0))
 
-        # ── TNDS: Total Non-Discretionary Spending (placeholder for AES) 
+        # ── TNDS: Total Non-Discretionary Spending (AES + education + damages)
         tnds_aes = inputs.get(
             "tnds_aes", Quantity(0.0, "capital_units")
         ).magnitude
+        tnds_education = inputs.get(
+            "education_tnds", Quantity(0.0, "capital_units")
+        ).magnitude
+        tnds_damages = inputs.get(
+            "damages_tnds", Quantity(0.0, "capital_units")
+        ).magnitude
+        total_tnds = tnds_aes + tnds_education + tnds_damages
 
         # ── Liquid Funds ODE ──────────────────────────────────────────
-        # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS_AES
-        investments = profit * self.military_fraction  # re-investment fraction
+        # dL/dt = Profit + Loans - Investments - Interest - Military - TNDS
         dL = (profit
               + loan_taking_rate
               - investments
               - interest_payments
               - military_spending
-              - tnds_aes)
+              - total_tnds)
 
         # ── Debt Pool ODEs ────────────────────────────────────────────
         # General debt: new loans - amortization
@@ -225,6 +240,8 @@ class FinanceSector:
             "AL",
             "POP",
             "tnds_aes",
+            "education_tnds",
+            "damages_tnds",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -264,6 +281,8 @@ class FinanceSector:
                 "interest_rate",
                 "debt_repayment_time",
                 "military_fraction",
+                "investment_fraction",
+                "leverage_fraction",
             ],
             "conservation_groups": [],
             "observables": [

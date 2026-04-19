@@ -97,8 +97,14 @@ class ResourcesSector:
         else:
             nruf = _NRUF1
 
+        # Technology efficiency: higher resource_tech_mult → less extraction per capita
+        res_tech = inputs.get(
+            "resource_tech_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+        res_tech = max(res_tech, 1e-6)
+
         # NR usage rate
-        nrur = pop * pcrum * nruf
+        nrur = pop * pcrum * nruf / res_tech
 
         # Don't extract more than available
         nrur = min(nrur, max(nr, 0.0) / max(ctx.master_dt, 0.0625))
@@ -112,6 +118,16 @@ class ResourcesSector:
         else:
             fcaor = table_lookup(nrfr, _FCAOR1_X, _FCAOR1_Y)
 
+        # Tech metals availability: reads demand from energy_technology sector,
+        # computes supply ratio using NR depletion as proxy for critical minerals.
+        # Calibration: demand_pressure = 1.0 when demand reaches 5e8 units.
+        tech_metals_demand = max(
+            inputs.get("tech_metals_demand", Quantity(0.0, "dimensionless")).magnitude,
+            0.0,
+        )
+        demand_pressure = tech_metals_demand * 2e-9  # scale: pressure=1 at demand=5e8
+        tech_metals_availability = min(nrfr / max(1.0 + demand_pressure, 1e-6), 1.0)
+
         return {
             "d_NR": Quantity(-nrur, "resource_units"),
             "extraction_rate": Quantity(nrur, "resource_units"),
@@ -119,10 +135,19 @@ class ResourcesSector:
             "nr_fraction_remaining": Quantity(nrfr, "dimensionless"),
             "fcaor": Quantity(fcaor, "dimensionless"),
             "resource_use_factor": Quantity(fcaor, "dimensionless"),
+            "tech_metals_availability": Quantity(
+                tech_metals_availability, "dimensionless"
+            ),
         }
 
     def declares_reads(self) -> list[str]:
-        return ["POP", "industrial_output", "industrial_output_per_capita"]
+        return [
+            "POP",
+            "industrial_output",
+            "industrial_output_per_capita",
+            "resource_tech_mult",
+            "tech_metals_demand",
+        ]
 
     def declares_writes(self) -> list[str]:
         return [
@@ -132,6 +157,7 @@ class ResourcesSector:
             "nr_fraction_remaining",
             "fcaor",
             "resource_use_factor",
+            "tech_metals_availability",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

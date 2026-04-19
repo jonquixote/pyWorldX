@@ -224,8 +224,20 @@ class PopulationSector:
         cmi = table_lookup(iopc, _CMI_X, _CMI_Y)
         lmc = 1.0 - cmi * fpu
 
+        # Toxin health multiplier (from pollution_toxins sector)
+        toxin_health = inputs.get(
+            "toxin_health_multiplier", Quantity(1.0, "dimensionless")
+        ).magnitude
+        toxin_health = max(0.0, min(toxin_health, 1.0))
+
+        # Gini stratified mortality: inequality reduces effective health access for majority
+        gini_mort = inputs.get(
+            "gini_mortality_mult", Quantity(1.0, "dimensionless")
+        ).magnitude
+        gini_mort = max(0.0, min(gini_mort, 1.0))
+
         # Life expectancy
-        life_expectancy = _LEN * lmf * lmhs * lmp * lmc
+        life_expectancy = _LEN * lmf * lmhs * lmp * lmc * toxin_health * gini_mort
         life_expectancy = max(life_expectancy, 1.0)
 
         # ── Age-specific mortality ────────────────────────────────────
@@ -234,12 +246,31 @@ class PopulationSector:
         m3 = table_lookup(life_expectancy, _M3_X, _M3_Y)
         m4 = table_lookup(life_expectancy, _M4_X, _M4_Y)
 
-        # Deaths
+        # Deaths from W3-03 age-specific mortality tables
         d1 = p1 * m1
         d2 = p2 * m2
         d3 = p3 * m3
         d4 = p4 * m4
-        total_deaths = d1 + d2 + d3 + d4
+        # Extra deaths from epidemic (published by seir.py as per-capita excess rate).
+        # SEIR tracks its own S/E/I/R stocks independently; adding here does not
+        # double-count because SEIR's cohort deaths do not flow back to P1-P4.
+        disease_death_rate = max(
+            inputs.get("disease_death_rate", Quantity(0.0, "per_year")).magnitude,
+            0.0,
+        )
+        pop = stocks["POP"].magnitude
+        extra_disease_deaths = pop * disease_death_rate
+
+        # Migration stress mortality: mass displacement raises crude death rate.
+        # Scale: 1e9 displaced persons/yr → 0.01 additional per-capita death rate.
+        migration_flow = max(
+            inputs.get("total_migration_flow", Quantity(0.0, "persons_per_year")).magnitude,
+            0.0,
+        )
+        _MIGRATION_MORTALITY_SCALE = 1e-11  # per (person/yr) of flow
+        migration_deaths = pop * migration_flow * _MIGRATION_MORTALITY_SCALE
+
+        total_deaths = d1 + d2 + d3 + d4 + extra_disease_deaths + migration_deaths
 
         # ── Maturation flows ──────────────────────────────────────────
         mat1 = p1 * (1.0 - m1) / 15.0   # 0-14 → 15-44
@@ -257,8 +288,14 @@ class PopulationSector:
         # FM: fecundity multiplier from LE
         fm = table_lookup(life_expectancy, _FM_X, _FM_Y)
 
-        # MTF: maximum total fertility
-        mtf = _MTFN * fm
+        # Toxin fertility multiplier (endocrine disruption from pollution_toxins)
+        toxin_fertility = inputs.get(
+            "toxin_fertility_multiplier", Quantity(1.0, "dimensionless")
+        ).magnitude
+        toxin_fertility = max(0.0, min(toxin_fertility, 1.0))
+
+        # MTF: maximum total fertility (reduced by toxin exposure)
+        mtf = _MTFN * fm * toxin_fertility
 
         # Average IOPC (SMOOTH with IEAT)
         d_aiopc = (iopc - aiopc) / max(_IEAT, 1e-6)
@@ -339,9 +376,12 @@ class PopulationSector:
             "P2": Quantity(p2, "persons"),
             "P3": Quantity(p3, "persons"),
             "P4": Quantity(p4, "persons"),
-            "birth_rate": Quantity(births, "persons_per_year"),
+            "birth_rate": Quantity(births / max(pop, 1.0), "per_year"),
             "death_rate": Quantity(total_deaths, "persons_per_year"),
             "life_expectancy": Quantity(life_expectancy, "years"),
+            "mat1": Quantity(mat1, "persons_per_year"),
+            "mat2": Quantity(mat2, "persons_per_year"),
+            "mat3": Quantity(mat3, "persons_per_year"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -350,6 +390,11 @@ class PopulationSector:
             "industrial_output",
             "pollution_index",
             "service_output_per_capita",
+            "toxin_health_multiplier",
+            "toxin_fertility_multiplier",
+            "disease_death_rate",
+            "gini_mortality_mult",
+            "total_migration_flow",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -362,6 +407,9 @@ class PopulationSector:
             "birth_rate",
             "death_rate",
             "life_expectancy",
+            "mat1",
+            "mat2",
+            "mat3",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

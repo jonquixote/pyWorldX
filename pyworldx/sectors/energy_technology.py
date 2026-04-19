@@ -116,6 +116,7 @@ class EnergyTechnologySector:
                 tech_metals_demand, "dimensionless"
             ),
             "trapped_capital": Quantity(trapped_capital, "capital_units"),
+            "tech_sector_investment": Quantity(investment, "capital_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -133,6 +134,7 @@ class EnergyTechnologySector:
             "energy_demand_technology",
             "tech_metals_demand",
             "trapped_capital",
+            "tech_sector_investment",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

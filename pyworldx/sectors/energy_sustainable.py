@@ -79,6 +79,7 @@ class EnergySustainableSector:
             "energy_demand_sustainable": Quantity(
                 energy_demand, "energy_units"
             ),
+            "sust_sector_investment": Quantity(investment, "capital_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -90,6 +91,7 @@ class EnergySustainableSector:
             "sustainable_output",
             "sustainable_eroi",
             "energy_demand_sustainable",
+            "sust_sector_investment",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:

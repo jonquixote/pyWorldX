@@ -44,6 +44,8 @@ _FOOD_EF_Y = (0.0, 0.3, 0.5, 0.8, 1.0, 1.2)
 _POL_EF_X = (0.0, 1.0, 5.0, 10.0, 20.0, 50.0)
 _POL_EF_Y = (0.0, 0.2, 0.5, 0.8, 1.2, 2.0)
 
+_DAMAGES_TNDS_FRACTION = 0.02  # fraction of io per unit pollution index
+
 
 class WelfareSector:
     """World3-03 Welfare indicator sector.
@@ -124,6 +126,8 @@ class WelfareSector:
         # Total EF normalized to reference
         ecological_footprint = ef_per_capita * (pop / self.ef_reference_pop)
 
+        damages_tnds = pi * io * _DAMAGES_TNDS_FRACTION
+
         return {
             "human_welfare_index": Quantity(hwi, "dimensionless"),
             "ecological_footprint": Quantity(
@@ -134,6 +138,7 @@ class WelfareSector:
             "hwi_education_component": Quantity(
                 education_component, "dimensionless"
             ),
+            "damages_tnds": Quantity(damages_tnds, "capital_units"),
         }
 
     def declares_reads(self) -> list[str]:
@@ -153,6 +158,7 @@ class WelfareSector:
             "hwi_life_exp_component",
             "hwi_income_component",
             "hwi_education_component",
+            "damages_tnds",
         ]
 
     def algebraic_loop_hints(self) -> list[dict[str, object]]:
