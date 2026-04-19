@@ -12,24 +12,32 @@ subprocess.run([BIN, "use", "27a3ae4c"], env=env_vars, check=True)
 
 queries = [
     {
-        "filename": "q80_human_capital_analytical_test.md",
-        "question": "When testing the Human Capital differential equation (dH/dt = -0.069*H with 10-year half-life) using RK4 at dt=1.0, it deviates from the exact analytical solution. The canonical R-I-P test uses an extremely tight 1e-4 tolerance. Should we use a smaller dt for SEIR/Human Capital, or loosen the analytical test tolerance to just verify half-life ≈ 0.5?"
+        "filename": "q85_l2_validation.md",
+        "question": "How should the L²[0,T] integral norm be implemented in Python alongside NRMSD? What are the discretization and normalization requirements, and how should it be weighted relative to the dual ROC-Value metric?"
     },
     {
-        "filename": "q81_human_capital_coupling_production.md",
-        "question": "Regarding Human Capital coupling to Capital: I multiplied the entire industrial_output by human_capital_multiplier at the end of the production chain. But q64 specifies Cobb-Douglas Q = A × K^α × R^β × H^(1-α-β). My implementation is simpler: IO = IC × (1-FCAOR) × CUF / ICOR × H. Is my approximation acceptable for Phase 2, or must we refactor the core production function to true Cobb-Douglas?"
+        "filename": "q86_central_registrar.md",
+        "question": "Provide the complete step-by-step algorithmic sequence of one CentralRegistrar RK4 sub-step, from state vector snapshot through demand collection, ceiling evaluation, SupplyMultiplier resolution, and derivative finalization, in enough detail to translate directly to Python."
     },
     {
-        "filename": "q82_human_capital_energy_demand.md",
-        "question": "Currently, the Human Capital sector does NOT broadcast energy_demand to the CentralRegistrar (as per q70). It reads Service_Output_Per_Capita but has no direct energy allocation. Since education requires physical infrastructure (schools, transport), does H need an explicit energy_demand, or is its energy footprint implicitly covered by the Service Sector's energy footprint?"
+        "filename": "q87_rip_sectors.md",
+        "question": "Are any of the original pyworld3 sector implementations (FCAOR lookup table, PPOLX single-stock, instant cash-box capital) still active during a calibration run, or have they been fully superseded? What is the correct way to verify that no legacy World3 equations are contaminating new sector outputs?"
     },
     {
-        "filename": "q83_conftest_fixtures_parameterization.md",
-        "question": "In the pytest conftest.py, we have `phase1_all_sectors` fixture that creates fresh sector instances each time using default parameters. Is there an officially recommended pattern in pyWorldX to test sectors isolated with custom parameters (like we do with parameter_overrides in scenarios), inside the pytest suite?"
+        "filename": "q88_spin_up_1850.md",
+        "question": "What are the recommended 1850 initial conditions for each major stock (NRI, IC, SC, AL, atmospheric GHG, persistent pollution, population) to achieve a stable pre-industrial equilibrium before entering the 1900 calibration window?"
     },
     {
-        "filename": "q84_data_pipeline_mapping.md",
-        "question": "We found three new data sources: 1) NOAA GML / GCB 2024/2025 netCDF for CO2 growth rates and flux partitioning. 2) EIA International End-Use Dataset (April 2026) for sectoral energy consumption. 3) USDA NRCS SSURGO/STATSGO2 for Soil Phosphorus Bioavailability. How should these specific datasets map to the Phase 2 sectors? Which parameters and calibration targets should they specifically inform?"
+        "filename": "q89_nrmsd_weights.md",
+        "question": "Cite the source and provide the full weight table across all observable sectors for the Sector-Weighted NRMSD. Are these weights appropriate and do they come from the Nebel 2023 recalibration literature?"
+    },
+    {
+        "filename": "q90_finance_capital_init.md",
+        "question": "What is the correct initialization order for Finance ↔ Capital at t=1900? What is the recommended opening Liquid Funds balance, and how should IC be monetized before the first RK4 step without creating a circular dependency?"
+    },
+    {
+        "filename": "q91_dt_reconciliation.md",
+        "question": "What is the minimum stable dt for each sector family (finance/energy, resources, agriculture, population), and what is the recommended multi-rate scheduler configuration that uses 1/512 only for stiff sub-systems while running slower sectors at dt=1/64 or coarser?"
     }
 ]
 
