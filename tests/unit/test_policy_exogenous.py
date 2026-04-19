@@ -230,7 +230,8 @@ class TestOntologyNameTranslation:
 
         # Find a mapping that exists
         ontology_name = "population.total"
-        engine_name = ENTITY_TO_ENGINE_MAP[ontology_name]
+        engine_entry = ENTITY_TO_ENGINE_MAP[ontology_name]
+        engine_name = engine_entry["engine_var"] if isinstance(engine_entry, dict) else engine_entry
         assert engine_name == "POP"
 
         # Build injector with ontology name

@@ -369,6 +369,11 @@ class DataBridge:
 
         # Check the dir itself exists
         resolved_dir = Path(resolved_dir)
+        if not resolved_dir.is_dir():
+            raise DataBridgeError(
+                f"Aligned directory does not exist: '{resolved_dir}'. "
+                "Run: python -m data_pipeline --align"
+            )
 
         try:
             from data_pipeline.storage.parquet_store import read_aligned
