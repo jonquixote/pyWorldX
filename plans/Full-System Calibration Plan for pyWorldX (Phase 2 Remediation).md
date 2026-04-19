@@ -4,6 +4,10 @@
 
 This report proposes a concrete, end-to-end calibration strategy for the `phase-2-remediation` branch of pyWorldX, leveraging its existing calibration pipeline, DataBridge, and 37-connector data pipeline. The plan is designed for iterative implementation and focuses on obtaining a physically plausible, empirically anchored global trajectory that remains robust under cross-validation.
 
+Key updates in this revision incorporate findings from the Pre-Flight Data Audit (`preflight_audit.md`) and the DataBridge Integration Review, including hard blockers around unit mismatches, circular calibration risks, multi-source arbitration failures, and `initial_conditions.py` default year errors. **All Tier 1 blockers from the preflight plan must be resolved before Phase 1 begins.**
+
+---
+
 ## Current Capabilities and Gaps
 
 The calibration stack is already well-structured:
@@ -12,11 +16,19 @@ The calibration stack is already well-structured:
 - The `run_calibration_pipeline` function implements a multi-stage workflow: profile likelihood, Morris screening, Bayesian global search (Optuna), Nelder-Mead, and Sobol variance decomposition.
 - `EmpiricalCalibrationRunner` ties the DataBridge to the pipeline and supports train/validation NRMSD splits via `CrossValidationConfig`.
 
-Remaining gaps are primarily in: (1) a small number of physics/units inconsistencies, and (2) the absence of a systematic sector-by-sector empirical calibration sequence using real Parquet outputs from the data pipeline.
+Remaining gaps — now explicitly catalogued in the preflight audit — are:
+
+1. **Four hard unit/mapping blockers** in `map.py` and `initial_conditions.py` that will produce numerically nonsensical NRMSD scores.
+2. **No continuous observed nonrenewable resource stock series** — the `World3ReferenceConnector` creates a circular calibration loop if used as a primary target.
+3. **Multi-source fan-in conflicts** for SC, IC, and AL with no arbitration logic.
+4. **Missing transform functions** (`imf_weo_parse`, `nebel_2023_parse`) that will raise `KeyError` at runtime.
+5. **CEDS non-CO₂ species** (NOx, BC, OC, CO, NH₃, NMVOC) not collapsed to global rows.
+
+---
 
 ## Phase 0: Pre-Calibration Physics and Units Fixes
 
-Before any calibration, the engine must not contain structural imbalances that force parameters to compensate for bugs.
+Before any calibration, the engine must not contain structural imbalances that force parameters to compensate for bugs. **All four Tier 1 blockers from `2026-04-18-preflight-plan.md` must be resolved and committed before proceeding to Phase 1.**
 
 ### 0.1 Carbon Cycle Equilibrium Fix
 
@@ -30,213 +42,248 @@ This stops the 1900–1940 atmospheric carbon dip and yields a stable pre-indust
 
 ### 0.2 Food Per Capita Unit Conversion
 
-The agriculture sector expresses food per capita in World3’s canonical `veg_equiv_kg/person/yr` units. Threshold queries and reporting, however, are expressed in kcal/day terms (e.g., “< 2500 kcal by 2050”). Without a conversion layer, users see values around 220–250 and may misinterpret them as kcal/day, suggesting catastrophic starvation.
+The agriculture sector expresses food per capita in World3's canonical `veg_equiv_kg/person/yr`
+units. The FAOSTAT pipeline emits `kcal/capita/day`. These two series are merged under the same
+entity with no conversion, producing a ~1,000× magnitude mismatch that will corrupt the
+agriculture-sector NRMSD.
 
 **Action:**
-- Implement a display-layer conversion in the reporting or forecasting layer:
-  - Convert internal `fpc` from kg/person/yr to kcal/person/day via a factor 
-  \(\text{kcal/day} = \text{kg/yr} × 3500 / 365\) (≈ 9.589).
-- Ensure threshold queries comparing against kcal/day values either:
-  - Use the converted kcal/day series, or
-  - Convert user thresholds down to kg/person/yr using the inverse factor.
+- **Recommended (short-term):** Keep the two series as separate entities and let
+  `DataBridge._normalize_to_index()` handle alignment. Both series index to `1.0 ± 0.10` at 1970.
+  This is the safer approach — a single kcal/kg scalar is ambiguous across crop types (cereal
+  ≈ 1,800 kcal/kg, legumes ≈ 3,400 kcal/kg), making any merged conversion brittle.
+- If a merged series is required in future, the correct conversion factor is:
+  `1 kg/yr = 1800 / 365 ≈ 4.93 kcal/day`, so `1 kcal/day ≈ 0.203 kg/yr`.
+  Apply as a `ConversionStep` dataclass before merging.
+- In the display/reporting layer, convert internal `fpc` (kg/person/yr) to kcal/person/day via
+  `kcal/day = kg/yr × (1800 / 365) ≈ kg/yr × 4.93`. Ensure threshold queries use this converted
+  series, not the raw kg/person/yr value.
 
-This preserves internal W3-compliant units while making all analytics and threshold results physically interpretable.
+### 0.3 Pollution Index / CO₂ Unit Separation (NEW — Preflight Blocker T1-1)
+
+`world3_reference_pollution_index` (dimensionless, ~1.0 at 1970) is currently mapped to the same `CalibrationTarget` entity as `atmospheric.co2` (ppm, ~325 at 1970). This is a category error — dividing a dimensionless index by a ppm value produces a ratio of ~0.003 instead of 1.0.
+
+**Action:**
+- Separate into two distinct entities: `pollution_index_relative` (World3 reference, maps to engine `PPOLX`) and `atmospheric_co2_ppm` (NOAA Keeling Curve / GCP).
+- Tag `atmospheric_co2_ppm` as `unit_mismatch=True` and exclude from the default objective until a ppm→index conversion factor is implemented.
+- `world3_reference_pollution_index` must be namespaced to `world3.pollution_index` and excluded from the empirical `ENTITY_TO_ENGINE_MAP`.
+
+### 0.4 Retire All World3 Reference → Real-Entity Collisions (NEW — Preflight Blocker)
+
+Four `world3_reference_*` mappings in `map.py` collide with real-data entities:
+
+| Colliding Mapping | Correct Action |
+|---|---|
+| `world3_reference_pollution_index` → `atmospheric.co2` | Retire; see §0.3 |
+| `world3_reference_food_per_capita` → `food_per_capita` | Namespace to `world3.food_per_capita` |
+| `world3_reference_industrial_output` → `gdp.current_usd` | Namespace to `world3.industrial_output` |
+| `world3_reference_nonrenewable_resources` → `NR` target | Namespace to `world3.nr_fraction`; exclude from objective |
+
+All World3 reference trajectories must be namespaced under `world3.*` and treated as **Layer 0 structural references**, never as empirical calibration targets in `ENTITY_TO_ENGINE_MAP`.
+
+---
 
 ## Phase 1: Data Pipeline and DataBridge Readiness
 
-Calibration depends on real-world trajectories being available and correctly mapped into engine variables.
+Calibration depends on real-world trajectories being available and correctly mapped into engine variables. The following steps must follow completion of all Tier 1 and Tier 2 items in `2026-04-18-preflight-plan.md`.
 
 ### 1.1 Ensure Aligned Parquet Store is Populated
 
-The data pipeline is designed to collect, transform, align, and export NRMSD-ready calibration series from 37 sources. The `EmpiricalCalibrationRunner` expects its `aligned_dir` to be a populated directory containing these aligned Parquet files.
-
 **Action:**
 - Run the full data pipeline locally:
-  - `poetry install --extras pipeline`
-  - `poetry run python -m data_pipeline collect`
-  - `poetry run python -m data_pipeline run`
-- Confirm that `data_pipeline/data/aligned/` (or configured equivalent) exists and contains the expected per-entity Parquet outputs.
+  - `poetry install --extras pipeline`
+  - `poetry run python -m data_pipeline collect`
+  - `poetry run python -m data_pipeline run`
+- Confirm `data_pipeline/data/aligned/` contains expected per-entity Parquet outputs.
+- Run Gate 3 coverage report: `python -m pyworldx.data.bridge --report-coverage --aligned-dir ./output/aligned`
+- Any entity with `base_year_nonzero=False` is a blocker — resolve before proceeding.
 
-### 1.2 Harden DataBridge Error Handling
+### 1.2 Fix FAOSTAT World Code (Preflight Blocker T1-3)
 
-`DataBridge` now exposes `load_targets` and related utilities, used by `EmpiricalCalibrationRunner` to construct `CalibrationTarget` objects from the aligned store. Robust calibration requires clear feedback when the aligned store is missing or malformed.
+Change `world_country_code="WLD"` → `"5000"` in `faostat_food_balance_historical`. Add post-fetch assertion. Re-run the connector to regenerate the Parquet cache. See `2026-04-18-preflight-plan.md` §T1-3 for full specification.
 
-**Action:**
-- Ensure `DataBridge.load_targets` raises a dedicated `DataBridgeError` when `aligned_dir` is absent, with a clear message instructing the user to run the pipeline first.
-- Confirm that `_clip_targets_to_window` and `build_objective` correctly enforce train-window clipping as configured in `CrossValidationConfig`.
+### 1.3 Nominate Single Authoritative Source Per Stock
 
-This guarantees that calibration runs fail fast and descriptively when empirical data is unavailable.
+The preflight audit identifies SC, IC, and AL as having multi-source fan-in with no arbitration. Before any calibration run:
+
+- Add `source_priority` lists to each multi-source entity in `ENTITY_TO_ENGINE_MAP`.
+- Implement priority-waterfall in `DataBridge.load_targets()`: use highest-priority source where non-null, fall back in order.
+- Log the selected source for each entity and year range to the calibration report.
+
+Authoritative sources (recommended):
+
+| Stock | Authoritative Source | Unit |
+|---|---|---|
+| SC | Penn World Tables `rgdpe` per capita | constant 2017 USD PPP |
+| IC | Penn World Tables `rnna` world-summed | constant 2017 USD |
+| AL | FAOSTAT RL `arable_land` | 1000 ha (×1000 to reach ha) |
+
+### 1.4 Harden DataBridge Error Handling
+
+- `DataBridge.load_targets()` must raise `DataBridgeError` when `aligned_dir` is absent, with a message instructing the user to run the pipeline.
+- Add Parquet cache staleness check: if cache is missing or older than `cache_ttl`, emit `logger.warning` with the connector refresh command.
+- Add zero-guard to `_normalize_to_index()` per preflight §T2-3 specification.
+- `EmpiricalCalibrationRunner` must accept a `scenario: str = "standard_run"` argument and validate it against registered scenarios (see Open Decision #1).
+
+### 1.5 Verify Transform Functions Exist
+
+- Grep for `imf_weo_parse` and `nebel_2023_parse` in the transform registry.
+- If absent, add stubs raising `NotImplementedError` with clear messages.
+- Add `aggregate_world` step to all CEDS non-CO₂ species connectors (NOx, BC, OC, CO, NH₃, NMVOC).
+
+### 1.6 Add BP Statistical Review Connector for NR
+
+The only real-world anchor for the resource sector. See preflight §T2-2:
+
+- Add `BPStatisticalReviewConnector` fetching proved reserves time-series (oil + gas + coal, EJ) from the OWID/BP mirror.
+- Map to `nonrenewable_resources_proved_reserves` with `unit="EJ"`, tagged `layer=1`.
+- Add conversion to World3 NR resource units calibrated against the 1970 World3-03 NR initial value (~1.0 × 10¹²).
+- Acceptance: series covers at least 1965–2023 with no more than 3 consecutive missing years.
+
+---
 
 ## Phase 2: Sector-by-Sector Calibration Strategy
 
-A global NRMSD objective over all free parameters is likely to be rugged and poorly conditioned. Instead, a block-decomposed strategy is recommended, where sectors are calibrated sequentially against their primary observables.
+A global NRMSD objective over all free parameters is likely to be rugged and poorly conditioned. A block-decomposed strategy is recommended, calibrating sectors sequentially against their primary observables.
+
+**Baseline normalization:** All series are normalized to `X(t) / X(train_start)` where `train_start = CrossValidationConfig.train_start` (1970). All indices equal 1.0 at the start of the calibration window. `initial_conditions.py` default is `target_year=1970` (fixed per preflight T1-4). Do **not** hardcode `1970` as a literal integer anywhere — always reference `CrossValidationConfig.train_start`.
 
 ### 2.1 Population Sector
 
-**Targets:** Historical world population 1900–2023 (from UN WPP or similar), already ingested via the pipeline into an aligned `population` entity.
+**Targets:** UN WPP world population 1950–2023 (`population.total`, unit: persons — apply `×1000` scale to FAOSTAT 1000_persons sources).
 
-**Parameters:**
-- `population.cbr_base` (baseline crude birth rate)
-- `population.cdr_base` (baseline crude death rate)
-- `population.initial_population` (initial stock, likely fixed for calibration)
+**Parameters:** `population.cbr_base`, `population.cdr_base`, `population.initial_population` (fixed).
 
-**Objective:** NRMSD between engine population trajectory and empirical population over a train window (e.g., 1900–2010), with validation on 2010–2023.
+**Objective:** NRMSD on train window 1970–2010; validate 2010–2023.
 
 **Steps:**
-1. Configure `CrossValidationConfig` with train and validation windows appropriate for population (e.g., train_start=1900, train_end=2010, validate_start=2010, validate_end=2023).
-2. Restrict the `ParameterRegistry` to population parameters for this stage (either via a separate registry or by marking other sectors as fixed).
-3. Use the existing pipeline:
-   - Profile likelihood on `population.cbr_base` and `population.cdr_base` to check identifiability.
-   - Run Morris screening, then Bayesian + Nelder-Mead over these 2 parameters.
-4. Evaluate train vs validation NRMSD and adjust bounds if necessary.
+1. Configure `CrossValidationConfig(train_start=1970, train_end=2010, validation_end=2023)`.
+2. Restrict `ParameterRegistry` to population parameters for this stage.
+3. Profile likelihood → Morris screening → Optuna (50 trials) → Nelder-Mead.
+4. Evaluate train vs. validation NRMSD; adjust bounds if `overfit_flagged=True`.
 
 ### 2.2 Capital Sector
 
-**Targets:** World industrial output or GDP/Sector index series, e.g., from Maddison Project or World Bank, aligned into the `capital`/`industrial_output` entity.
+**Targets:** PWT `rnna` world-summed for IC; PWT `rgdpe` per capita for SC. Both in constant 2017 USD (deflator step required to reconcile PWT 2017 with UNIDO/WB 2015 base — see preflight §3.2).
 
-**Parameters:**
-- `capital.initial_ic` (initial industrial capital)
-- `capital.icor` (incremental capital-output ratio)
-- `capital.alic` and `capital.alsc` (lifetimes of industrial and social capital)
-
-**Objective:** NRMSD between engine industrial output and empirical GDP index, using a similar train/validate split.
+**Parameters:** `capital.initial_ic`, `capital.icor`, `capital.alic`, `capital.alsc`.
 
 **Steps:**
-1. Freeze population parameters at their calibrated values from 2.1.
-2. Focus calibration on the capital parameters while treating agriculture and resources as fixed at defaults.
-3. Use the same pipeline (profile → Morris → Bayesian → Nelder-Mead) on capital-sector parameters.
+1. Freeze population parameters at calibrated values from §2.1.
+2. Nominate PWT as authoritative per §1.3 priority table; demote World Bank NV.SRV to cross-validation.
+3. Profile → Morris → Optuna → Nelder-Mead on capital parameters.
 
 ### 2.3 Agriculture Sector
 
-**Targets:** Food per capita or crop yield per person from FAO or similar, mapped to `agriculture` entities in the aligned store.
+**Targets:** FAOSTAT FBS `food_supply_kcal_per_capita` (1961–2023); FAOSTAT RL `arable_land` (1961–2023, ×1000 to hectares). FBSH world code must be `5000` (preflight T1-3).
 
-**Parameters:**
-- `agriculture.initial_al` (initial arable land)
-- `agriculture.initial_land_fertility`
-- `agriculture.land_development_rate`
-- `agriculture.sfpc` (subsistence food per capita)
-
-**Objective:** NRMSD between engine food per capita (converted to kcal/day at the reporting layer) and empirical per-capita food availability.
+**Parameters:** `agriculture.initial_al`, `agriculture.initial_land_fertility`, `agriculture.land_development_rate`, `agriculture.sfpc`.
 
 **Steps:**
-1. Use calibrated population and capital parameters; treat energy and resources as defaults.
-2. Calibrate agriculture parameters to match the timing and magnitude of the post-1950 Green Revolution.
-3. Confirm that the food-per-capita series, once converted, sits in the expected 2500–3200 kcal/day band during the late 20th and early 21st century.
+1. Use calibrated population and capital; treat resources as defaults.
+2. Calibrate to match timing and magnitude of post-1950 Green Revolution.
+3. Verify converted `fpc` series sits in 2500–3200 kcal/day band during 1980–2020.
 
 ### 2.4 Resources Sector
 
-**Targets:** Fossil extraction and reserve depletion proxies based on USGS data (already used in `EmpiricalCalibrationRunner.load_usgs_targets`).
+**Targets:** BP Statistical Review proved reserves index (Layer 1, new connector §1.6); USGS extraction index and depletion ratio (Layer 2, existing proxy).
 
-**Parameters:**
-- `resources.initial_nr` (initial nonrenewable resource stock)
-- `resources.policy_year` (activation year for resource policy, if still free)
+**Parameters:** `resources.initial_nr`, `resources.policy_year`.
 
-**Objective:** NRMSD between engine resource extraction/output and the USGS-derived extraction index and reserve depletion ratio, using the `nrmsd_method="change_rate"` for trajectories dominated by slopes rather than levels.
+**Objective:** `nrmsd_method="change_rate"` for trajectories dominated by slopes rather than levels. Do **not** use `world3_reference_nonrenewable_resources` as a calibration target (circular — see §0.4).
 
 **Steps:**
-1. With population, capital, and agriculture calibrated, adjust resource parameters to align the timing of peak fossil extraction and depletion with empirical data.
-2. Use the Layer 3 USGS cross-validation in `EmpiricalCalibrationRunner` as an explicit calibration step, not just a post-hoc check.
+1. With population, capital, and agriculture calibrated, align the timing of peak fossil extraction with BP reserve data.
+2. Use USGS depletion ratio as a secondary cross-validation check, not as a primary objective signal.
 
 ### 2.5 Pollution and Climate Sectors
 
-**Targets:**
-- Persistent pollution trajectories (if empirical proxies exist)
-- Atmospheric CO₂ concentration and radiative forcing series from NOAA and GCB, aligned via the pipeline.
+**Targets:** NOAA annual CO₂ (`atmospheric_co2_ppm`, 1958–2024); GCP fossil CO₂ emissions (`emissions.co2_fossil`, Mt CO₂); CEDS SO₂ as a flow-rate proxy for persistent pollution (explicitly **not** a stock proxy — see preflight §1.1).
 
-**Parameters:**
-- `pollution.initial_ppol`
-- `pollution.ahl70` (absorption half-life in 1970)
-- `pollution.pptd` (toxic pollution persistence, already anchored to Nebel 2024)
+**Parameters:** `pollution.initial_ppol`, `pollution.ahl70`, `pollution.pptd` (anchored to Nebel 2024).
 
-**Objective:** Jointly minimize NRMSD for CO₂ concentration, radiative forcing, and persistent pollution proxies, ensuring mass conservation (as enforced by the carbon model’s conservation group metadata).
+**Key constraint:** `atmospheric_co2_ppm` is an empirical entity in ppm — it must **not** be merged with `world3.pollution_index` (dimensionless). The engine's `PPOLX` variable maps only to `pollution_index_relative`. CO₂ calibration operates as an independent check on the carbon cycle, not a direct PPOLX target.
 
 **Steps:**
-1. With energy usage and industrial output calibrated, adjust pollution parameters so that the engine’s CO₂ trajectory matches observed data from 1958 onward.
-2. Confirm that radiative forcing calculated from the engine’s atmospheric carbon matches external radiative forcing series.
+1. With energy usage and industrial output calibrated, adjust pollution parameters so the engine's CO₂ trajectory matches NOAA data from 1958 onward.
+2. Verify radiative forcing from engine atmospheric carbon matches external forcing series.
+3. Confirm CEDS non-CO₂ species are collapsed to global rows before ingestion (preflight §1.5).
+
+---
 
 ## Phase 3: Joint Multi-Sector Fine Tuning
 
-After sector-level calibration, the system is close to plausible but may still have cross-sector mismatches. A controlled joint optimization then refines a subset of the most influential parameters.
+After sector-level calibration, a controlled joint optimization refines the most influential cross-sector parameters.
 
-### 3.1 Identify Influential Parameters Across Sectors
+### 3.1 Identify Influential Parameters
 
-The Sobol analysis in `run_calibration_pipeline` computes first-order and total-order sensitivity indices for the screened parameter set.
-
-**Action:**
-- For each sector’s calibrated run, capture the Sobol results and identify the top 1–2 parameters per observable (population, GDP, food per capita, CO₂, etc.).
-- Build a reduced joint parameter set of 5–6 parameters that consistently appear as high-influence.
+- From each sector's Sobol output, extract top 1–2 parameters per observable.
+- Build a reduced joint parameter set of 5–6 parameters that consistently rank high across sectors.
 
 ### 3.2 Define Composite NRMSD Objective
 
-Using the DataBridge, construct a composite objective that combines normalized NRMSD across all key observables, with explicit weights reflecting model priorities (e.g., higher weight on population and CO₂, moderate on pollution proxies).
+Using `DataBridge`, construct a composite objective combining normalized NRMSD across all key observables:
 
-**Action:**
-- Implement a composite objective that:
-  - Uses train window 1970–2010 for all series when computing NRMSD.
-  - Uses standardized weights so that each observable contributes comparably.
+- Train window: 1970–2010 for all series (use `CrossValidationConfig.train_start`, not literal `1970`).
+- Standardized weights so each observable contributes comparably.
+- Recommended initial weights: population ×1.5, CO₂ ×1.5, food per capita ×1.0, IC ×1.0, resources ×0.75 (lower confidence due to proxy quality).
 
 ### 3.3 Run Joint Optuna + Nelder-Mead
 
-With the reduced parameter set and composite objective:
+- Limit `parameter_names` to the joint influential set (5–6 parameters).
+- `bayesian_n_trials=50–100`.
+- Assert `validation_nrmsd` is computed **independently** from `train_nrmsd` (separate DataBridge call, holdout window 2010–2023).
+- Assert `overfit_flagged` triggers only when gap exceeds `CrossValidationConfig.overfit_threshold`, not as a hard failure for any `validation_nrmsd > train_nrmsd` (mild degradation is expected and healthy).
 
-- Run `run_calibration_pipeline` with:
-  - `parameter_names` limited to the joint influential set.
-  - A moderate `bayesian_n_trials` (e.g., 50–100) to avoid excessive compute.
-- Inspect train vs validation NRMSD and ensure `overfit_flagged` remains false.
+---
 
 ## Phase 4: Robustness, Ensembles, and Scenario Testing
 
-Calibration is not complete until robustness under uncertainty and scenario perturbations is understood.
-
 ### 4.1 Monte Carlo Ensemble with Saltelli Sampling
 
-The forecasting layer already supports Saltelli sampling and Sobol decomposition over parameter, exogenous, and initial condition uncertainties.
-
-**Action:**
-- Run ensemble simulations using the calibrated parameter set as the mean and uncertainty bounds derived from the `ParameterEntry.bounds` fields.
-- Confirm that:
-  - Threshold queries (e.g., probability of food per capita dropping below 2500 kcal/day by 2050) use the converted kcal/day series.
-  - Sobol decomposition of ensemble output attributes variance correctly to parameter vs exogenous vs initial conditions classes.
+- Run ensemble using calibrated parameter set as mean; uncertainty bounds from `ParameterEntry.bounds`.
+- Threshold queries (e.g., food per capita < 2500 kcal/day by 2050) must use the converted kcal/day series.
+- Sobol decomposition must attribute variance correctly to parameter vs. exogenous vs. initial conditions classes.
 
 ### 4.2 Scenario Stress Tests
 
-Using the scenario system, define policy scenarios (e.g., emission reductions, resource policy year shifts) and test the calibrated model under each scenario.
+- `EmpiricalCalibrationRunner` accepts `scenario` argument (default `"standard_run"`); validate against engine's registered scenario list.
+- For scenarios such as `Historical Emissions Policy`, run a limited ensemble and confirm calibrated parameters produce qualitatively plausible deviations from the baseline.
+- Calibration must not bake in policy assumptions — `Standard Run` is the primary calibration target; policy scenarios are validation-only.
 
-**Action:**
-- For each scenario:
-  - Run a limited ensemble.
-  - Track deviations from the baseline in key indicators.
-- Ensure that scenario effects are qualitatively plausible and that the calibration does not “bake in” particular policy assumptions.
+---
 
 ## Phase 5: Documentation and Regression Protection
 
-A calibrated system is only as robust as the tests that guard it.
-
 ### 5.1 Calibration Snapshots and NRMSD Baselines
 
-**Action:**
-- After each major phase (sector-level and joint calibration), record the calibrated parameter set and corresponding NRMSD scores (train and validation) in a machine-readable manifest.
-- Add regression tests that:
-  - Run `EmpiricalCalibrationRunner.quick_evaluate` with the baseline parameter set.
-  - Assert that composite NRMSD remains below a threshold or within a narrow tolerance band.
+- After each major phase, record calibrated parameter set and NRMSD scores (train + validation) in a machine-readable manifest.
+- Add regression tests: run `EmpiricalCalibrationRunner.quick_evaluate` with the baseline parameter set; assert composite NRMSD remains below threshold or within tolerance band.
 
 ### 5.2 Narrative Documentation
 
-**Action:**
-- Extend the calibration section of the README or a dedicated `docs/calibration.md` to describe:
-  - The block-decomposition strategy.
-  - Key data sources and their mapping into `CalibrationTarget` variables.
-  - Known limitations and assumptions (e.g., reliance on W3-03 defaults where empirical anchors are weak).
+Extend `docs/calibration.md` to describe:
+- Block-decomposition strategy and sector sequencing rationale.
+- Key data sources, their pipeline connectors, and entity-to-engine mappings.
+- Source priority table for multi-source entities.
+- Known limitations: NR sector relies on proved reserves proxy (not physical stock); `PPOLX` has no direct empirical observable; pre-1961 agriculture data uses Gapminder estimates.
+- The `World3ReferenceConnector` scope: Layer 0 structural reference only, never an empirical calibration target.
 
-This ensures future contributors understand both the calibration workflow and its rationale.
+### 5.3 plans/implementation_audit_report.md Update
+
+After all Tier 1 + Tier 2 items are resolved, update `plans/implementation_audit_report.md` with resolved status for each preflight finding. PR description must reference `plans/2026-04-18-preflight-plan.md`.
+
+---
 
 ## Implementation Ordering Summary
 
-1. Fix pre-calibration physics and units (carbon equilibrium, fpc conversion).
-2. Populate aligned Parquet store; harden DataBridge error handling.
-3. Calibrate sectors sequentially: population → capital → agriculture → resources → pollution.
-4. Identify influential parameters and run joint multi-sector refinement.
-5. Run ensembles and scenario tests to assess robustness.
-6. Capture calibrated parameter sets and NRMSD baselines; add regression tests and documentation.
+| Step | Action | Prerequisite |
+|---|---|---|
+| 0 | Fix carbon equilibrium, fpc unit collision, retire World3→real collisions, fix FAOSTAT world code, fix `initial_conditions.py` default year | None |
+| 1 | Populate aligned Parquet store; add BP reserves connector; harden DataBridge; verify transforms; nominate authoritative sources | All Tier 1 + Tier 2 preflight items resolved |
+| 2 | Calibrate sectors sequentially: population → capital → agriculture → resources → pollution | Phase 1 complete; all 5 preflight Gates pass |
+| 3 | Identify influential parameters; run joint Optuna + Nelder-Mead with composite NRMSD | Phase 2 complete |
+| 4 | Run ensembles and scenario tests | Phase 3 complete |
+| 5 | Capture NRMSD baselines; add regression tests; write `docs/calibration.md`; update audit report | Phase 4 complete |
 
 Following this plan will move pyWorldX from a structurally sophisticated but under-calibrated system to a fully empirical, cross-validated global model that is robust under uncertainty and explicit about its assumptions.
