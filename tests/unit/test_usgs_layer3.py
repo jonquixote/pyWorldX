@@ -135,11 +135,15 @@ class TestComputeReserveDepletionRatio:
 class TestBridgeUSGSMappings:
     def test_extraction_index_in_entity_map(self):
         assert "resources.extraction_index" in ENTITY_TO_ENGINE_MAP
-        assert ENTITY_TO_ENGINE_MAP["resources.extraction_index"] == "resource_extraction_index"
+        entry = ENTITY_TO_ENGINE_MAP["resources.extraction_index"]
+        engine_var = entry["engine_var"] if isinstance(entry, dict) else entry
+        assert engine_var == "resource_extraction_index"
 
     def test_depletion_ratio_in_entity_map(self):
         assert "resources.depletion_ratio" in ENTITY_TO_ENGINE_MAP
-        assert ENTITY_TO_ENGINE_MAP["resources.depletion_ratio"] == "reserve_depletion_ratio"
+        entry = ENTITY_TO_ENGINE_MAP["resources.depletion_ratio"]
+        engine_var = entry["engine_var"] if isinstance(entry, dict) else entry
+        assert engine_var == "reserve_depletion_ratio"
 
     def test_nrmsd_methods_assigned(self):
         assert NRMSD_METHOD["resource_extraction_index"] == "change_rate"
