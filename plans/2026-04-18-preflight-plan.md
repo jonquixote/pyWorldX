@@ -825,9 +825,9 @@ Expected: completes without `UnitMismatchError`, `DataBridgeError`, or `NaN` in 
 ## Completion Criteria
 
 This plan is complete when:
-- [ ] T0-0 directory scaffold GREEN
-- [ ] All 4 Tier 1 tickets GREEN and committed
-- [ ] All 5 Tier 2 tickets GREEN and committed
-- [ ] All 5 Verification Gates pass in a clean environment
-- [ ] `plans/implementation_audit_report.md` updated with resolved status for each finding
-- [ ] PR description references this file: `plans/2026-04-18-preflight-plan.md`
+- [x] T0-0 directory scaffold GREEN
+- [x] All 4 Tier 1 tickets GREEN and committed
+- [x] All 5 Tier 2 tickets GREEN and committed
+- [x] All 5 Verification Gates pass in a clean environment
+- [x] `plans/implementation_audit_report.md` updated with resolved status for each finding
+- [x] PR description references this file: `plans/2026-04-18-preflight-plan.md`
