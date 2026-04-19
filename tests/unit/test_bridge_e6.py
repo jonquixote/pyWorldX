@@ -25,12 +25,12 @@ def test_bridge_resolves_all_phase2_entities() -> None:
 
 
 def test_phase2_carbon_entities_map_correctly() -> None:
-    assert ENTITY_TO_ENGINE_MAP["carbon.atmospheric_gtc"] == "C_atm"
-    assert ENTITY_TO_ENGINE_MAP["carbon.soil_gtc"] == "C_soc"
-    assert ENTITY_TO_ENGINE_MAP["carbon.ocean_deep_gtc"] == "C_ocean_deep"
+    assert ENTITY_TO_ENGINE_MAP["carbon.atmospheric_gtc"]["engine_var"] == "C_atm"
+    assert ENTITY_TO_ENGINE_MAP["carbon.soil_gtc"]["engine_var"] == "C_soc"
+    assert ENTITY_TO_ENGINE_MAP["carbon.ocean_deep_gtc"]["engine_var"] == "C_ocean_deep"
 
 
 def test_phase2_coupling_entities_map_correctly() -> None:
-    assert ENTITY_TO_ENGINE_MAP["finance.resilience"] == "financial_resilience"
-    assert ENTITY_TO_ENGINE_MAP["energy.supply_factor"] == "energy_supply_factor"
-    assert ENTITY_TO_ENGINE_MAP["climate.temperature_anomaly"] == "temperature_anomaly"
+    assert ENTITY_TO_ENGINE_MAP["finance.resilience"]["engine_var"] == "financial_resilience"
+    assert ENTITY_TO_ENGINE_MAP["energy.supply_factor"]["engine_var"] == "energy_supply_factor"
+    assert ENTITY_TO_ENGINE_MAP["climate.temperature_anomaly"]["engine_var"] == "temperature_anomaly"

@@ -65,9 +65,9 @@ class EmpiricalCalibrationRunner:
         aligned_dir: Path,
         reference_connector: Optional[Any] = None,
         usgs_data_dir: Optional[Path] = None,
-        reference_year: int = 1970,
+        reference_year: Optional[int] = None,
         normalize: bool = True,
-        entity_map: Optional[dict[str, str]] = None,
+        entity_map: Optional[dict[str, Any]] = None,
     ) -> None:
         """Initialize the runner.
 
@@ -76,15 +76,18 @@ class EmpiricalCalibrationRunner:
             reference_connector: Optional World3ReferenceConnector for Layer 1
             usgs_data_dir: Path to USGS data directory for Layer 3.
                 Defaults to data_pipeline/data/usgs/
-            reference_year: Base year for normalization (default 1970)
+            reference_year: Base year for normalization.
+                Defaults to CrossValidationConfig.train_start.
             normalize: Whether to normalize trajectories
             entity_map: Override for ENTITY_TO_ENGINE_MAP
         """
+        from pyworldx.calibration.metrics import CrossValidationConfig
+        resolved_ref_year = reference_year if reference_year is not None else CrossValidationConfig.train_start
         self.aligned_dir = aligned_dir
         self.reference_connector = reference_connector
         self.usgs_data_dir = usgs_data_dir
         self.bridge = DataBridge(
-            reference_year=reference_year,
+            reference_year=resolved_ref_year,
             normalize=normalize,
             entity_map=entity_map or ENTITY_TO_ENGINE_MAP,
         )

@@ -286,3 +286,26 @@ def fetch_all(config: PipelineConfig) -> list[FetchResult]:
         result = fetch_faostat(config, domain=domain)
         results.append(result)
     return results
+
+
+class FAOSTATConnector:
+    """Thin connector class for the FAOSTAT API.
+
+    Exposes world_area_code as a named class attribute so tests can assert
+    the correct value and subclasses can override it without touching the
+    module-level WORLD_AREA constant.
+    """
+
+    # FAOSTAT numeric world area code.  "WLD" is NOT valid — use "5000".
+    world_area_code: str = WORLD_AREA  # "5000"
+
+    layer: int = 1  # Layer 1: observed/empirical data
+
+    def __init__(self, config: Optional[PipelineConfig] = None) -> None:
+        self.config = config
+
+    def fetch(self, domain: str = "food_balance") -> FetchResult:
+        """Fetch a FAOSTAT domain."""
+        if self.config is None:
+            raise ValueError("FAOSTATConnector requires a PipelineConfig to fetch data.")
+        return fetch_faostat(self.config, domain=domain)

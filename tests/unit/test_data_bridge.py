@@ -92,16 +92,23 @@ class TestCalibrationTarget:
 class TestEntityMapping:
     def test_all_engine_targets_exist(self):
         """Every engine variable in ENTITY_TO_ENGINE_MAP has an NRMSD method."""
-        for engine_var in ENTITY_TO_ENGINE_MAP.values():
+        for entry in ENTITY_TO_ENGINE_MAP.values():
+            if isinstance(entry, dict):
+                engine_var = entry.get("engine_var")
+                if not engine_var or entry.get("excluded_from_objective"):
+                    continue
+            else:
+                engine_var = entry
+
             assert engine_var in NRMSD_METHOD, (
                 f"Engine variable {engine_var} missing from NRMSD_METHOD"
             )
 
     def test_expected_mappings(self):
-        assert ENTITY_TO_ENGINE_MAP["population.total"] == "POP"
-        assert ENTITY_TO_ENGINE_MAP["gdp.current_usd"] == "industrial_output"
-        assert ENTITY_TO_ENGINE_MAP["emissions.co2_fossil"] == "pollution_generation"
-        assert ENTITY_TO_ENGINE_MAP["hdi.human_development_index"] == "human_welfare_index"
+        assert ENTITY_TO_ENGINE_MAP["population.total"]["engine_var"] == "POP"
+        assert ENTITY_TO_ENGINE_MAP["gdp.current_usd"]["engine_var"] == "industrial_output"
+        assert ENTITY_TO_ENGINE_MAP["emissions.co2_fossil"]["engine_var"] == "pollution_generation"
+        assert ENTITY_TO_ENGINE_MAP["hdi.human_development_index"]["engine_var"] == "human_welfare_index"
 
 
 class TestDataBridgeCompare:
@@ -285,8 +292,8 @@ class TestDataBridgeLoadTargets:
         })
         df.to_parquet(aligned / "population_total.parquet")
 
-        bridge = DataBridge()
-        targets = bridge.load_targets(aligned)
+        bridge = DataBridge(entity_map={"population.total": "POP"})
+        targets = bridge.load_targets(aligned, sector="population")
         pop_targets = [t for t in targets if t.variable_name == "POP"]
         assert len(pop_targets) == 1
         assert len(pop_targets[0].years) == 5
@@ -303,8 +310,8 @@ class TestDataBridgeLoadTargets:
         })
         df.to_parquet(aligned / "population_total.parquet")
 
-        bridge = DataBridge()
-        targets = bridge.load_targets(aligned)
+        bridge = DataBridge(entity_map={"population.total": "POP"})
+        targets = bridge.load_targets(aligned, sector="population")
         # Only 2 data points — should be skipped (minimum is 3)
         pop_targets = [t for t in targets if t.variable_name == "POP"]
         assert len(pop_targets) == 0
@@ -478,15 +485,20 @@ class TestEmpiricalCalibrationRunner:
         })
         df.to_parquet(aligned / "population_total.parquet")
 
-        runner = EmpiricalCalibrationRunner(aligned_dir=aligned, normalize=False)
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=aligned,
+            normalize=False,
+            entity_map={"population.total": "POP"},
+        )
         result = runner.quick_evaluate(_trivial_engine, {"scale": 1.0})
         assert isinstance(result, BridgeResult)
         assert result.n_targets >= 1
 
     @pytest.mark.skipif(not _HAS_DUCKDB, reason="duckdb required for pipeline store")
-    def test_run_no_targets_returns_empty_report(self, tmp_path):
+    def test_run_no_targets_returns_empty_report(self, tmp_path, monkeypatch):
         """With no aligned data, run() returns an empty report."""
         runner = EmpiricalCalibrationRunner(aligned_dir=tmp_path)
+        monkeypatch.setattr(runner.bridge, "load_targets", lambda *args, **kwargs: [])
         from pyworldx.calibration.parameters import ParameterRegistry
         registry = ParameterRegistry()
         report = runner.run(registry, _trivial_engine)

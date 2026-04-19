@@ -120,12 +120,14 @@ def reconstruct_pollution_proxy(
 
     combined = pd.concat(frames, ignore_index=True)
 
-    # Normalize to pollution index (base year 1970 = 1.0)
+    # Normalize to pollution index (base year = CrossValidationConfig.train_start = 1.0)
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    _base_year = CrossValidationConfig.train_start
     world_total = combined.groupby("year")["co2_mt"].sum().reset_index()
-    world_1970 = world_total.loc[world_total["year"] == 1970, "co2_mt"]
+    world_base = world_total.loc[world_total["year"] == _base_year, "co2_mt"]
 
-    if len(world_1970) > 0 and world_1970.iloc[0] > 0:
-        world_total["pollution_index"] = world_total["co2_mt"] / world_1970.iloc[0]
+    if len(world_base) > 0 and world_base.iloc[0] > 0:
+        world_total["pollution_index"] = world_total["co2_mt"] / world_base.iloc[0]
     else:
         world_total["pollution_index"] = world_total["co2_mt"] / world_total["co2_mt"].iloc[0]
 

@@ -257,7 +257,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
             world_area_name="World",
         ),
     ],
-    # ── FAOSTAT Historical (FBSH 1961-2013) ────────────────────
+    # ── FAOSTAT Historical (FBSH 1961-2013) ────────────────────────
     "faostat_food_balance_historical": [
         EntityMapping(
             entity="food.supply.kcal_per_capita",
@@ -271,7 +271,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
                 }),
             ],
             country_filter="world",
-            world_country_code="WLD",
+            world_country_code="5000",  # Fixed: was "WLD", FAOSTAT uses numeric "5000"
             world_area_name="World",
         ),
         EntityMapping(
@@ -286,7 +286,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
                 }),
             ],
             country_filter="world",
-            world_country_code="WLD",
+            world_country_code="5000",  # Fixed: was "WLD"
             world_area_name="World",
         ),
     ],
@@ -1383,7 +1383,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
     ],
     "world3_reference_industrial_output": [
         EntityMapping(
-            entity="gdp.current_usd",
+            entity="world3.industrial_output",  # NOT gdp.current_usd
             year_col="year",
             value_col="value",
             unit="industrial_output_units",
@@ -1394,7 +1394,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
     ],
     "world3_reference_food_per_capita": [
         EntityMapping(
-            entity="food.supply.kcal_per_capita",
+            entity="world3.food_per_capita",  # NOT food.supply.kcal_per_capita
             year_col="year",
             value_col="value",
             unit="veg_equiv_kg_per_person_yr",
@@ -1405,7 +1405,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
     ],
     "world3_reference_nr_fraction_remaining": [
         EntityMapping(
-            entity="resources.nonrenewable_stock",
+            entity="world3.nr_fraction",  # NOT resources.nonrenewable_stock
             year_col="year",
             value_col="value",
             unit="dimensionless",
@@ -1416,7 +1416,7 @@ ONTOLOGY_MAP: dict[str, list[EntityMapping]] = {
     ],
     "world3_reference_pollution_index": [
         EntityMapping(
-            entity="atmospheric.co2",
+            entity="world3.pollution_index",  # NOT atmospheric.co2
             year_col="year",
             value_col="value",
             unit="dimensionless",

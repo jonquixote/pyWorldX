@@ -112,6 +112,18 @@ class CrossValidationConfig:
     validate_end: int = 2023
     overfit_threshold: float = 0.20
 
+    def __post_init__(self) -> None:
+        if not (self.train_start < self.train_end):
+            raise ValueError(
+                f"CrossValidationConfig: train_start={self.train_start} must be "
+                f"< train_end={self.train_end}"
+            )
+        if not (self.train_end < self.validate_end):
+            raise ValueError(
+                f"CrossValidationConfig: train_end={self.train_end} must be "
+                f"< validate_end={self.validate_end}"
+            )
+
 
 # Named constant for Nebel et al. 2023 reproduction (Section 9.4)
 NEBEL_2023_CALIBRATION_CONFIG = CrossValidationConfig(
