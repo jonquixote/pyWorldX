@@ -17,6 +17,7 @@ def bridge(tmp_path):
 
 # ── T2-3: Zero-guard in _normalize_to_index ──────────────────────────
 
+
 def test_normalize_divides_by_base_year(bridge):
     s = pd.Series({1968: 2.0, 1970: 4.0, 1975: 8.0})
     result = bridge._normalize_to_index(s, base_year=1970)
@@ -55,6 +56,7 @@ def test_normalize_base_year_is_config_train_start(bridge):
 
 # ── T2-4: Parquet cache staleness check ──────────────────────────────
 
+
 def test_load_targets_raises_databridge_error_when_parquet_missing(bridge):
     with pytest.raises(DataBridgeError, match="Parquet cache missing"):
         bridge.load_targets()
@@ -71,7 +73,10 @@ def test_load_targets_error_names_the_connector(tmp_path):
 
 
 def test_load_targets_warns_on_stale_cache(tmp_path, caplog):
-    import logging, time, os
+    import logging
+    import time
+    import os
+
     aligned = tmp_path / "aligned"
     aligned.mkdir()
     # Create a parquet that is artificially old
@@ -87,11 +92,8 @@ def test_load_targets_warns_on_stale_cache(tmp_path, caplog):
         except DataBridgeError:
             pass  # other caches missing; we only care about the stale warning
     assert any(
-        "stale" in r.message.lower() or "days old" in r.message.lower()
-        for r in caplog.records
-    ), (
-        "DataBridge must warn when a cached Parquet file is older than cache_ttl days."
-    )
+        "stale" in r.message.lower() or "days old" in r.message.lower() for r in caplog.records
+    ), "DataBridge must warn when a cached Parquet file is older than cache_ttl days."
 
 
 def test_databridge_has_cache_ttl_attribute():

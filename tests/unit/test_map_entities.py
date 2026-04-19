@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
+import pytest  # noqa: F401
 import pandas as pd
 
 from pyworldx.data.bridge import ENTITY_TO_ENGINE_MAP, WORLD3_NAMESPACE
 
 
 # ── T1-1: Pollution Index / CO₂ separation ───────────────────────────
+
 
 def test_pollution_index_and_co2_are_separate_entities():
     assert "pollution_index_relative" in ENTITY_TO_ENGINE_MAP, (
@@ -38,6 +39,7 @@ def test_world3_pollution_index_namespaced():
 
 
 # ── T1-2: Food Per Capita entity separation ───────────────────────────
+
 
 def test_world3_food_reference_not_in_engine_map():
     assert "world3_reference_food_per_capita" not in ENTITY_TO_ENGINE_MAP, (
@@ -69,6 +71,7 @@ def test_faostat_is_sole_empirical_food_entity():
 
 # ── T1-2: All four world3_reference_* collisions retired ──────────────
 
+
 def test_world3_reference_collisions_fully_retired():
     """All four world3_reference_* collision mappings must be removed."""
     forbidden = [
@@ -86,6 +89,7 @@ def test_world3_reference_collisions_fully_retired():
 
 # ── T2-1: Deterministic source arbitration ────────────────────────────
 
+
 def test_source_priority_defined_for_multi_source_entities():
     multi = ["service_capital", "industrial_capital", "arable_land"]
     for entity in multi:
@@ -101,6 +105,7 @@ def test_source_priority_defined_for_multi_source_entities():
 def test_load_targets_is_deterministic(tmp_path):
     from pyworldx.data.bridge import DataBridge
     from pyworldx.calibration.metrics import CrossValidationConfig
+
     aligned = tmp_path / "aligned"
     aligned.mkdir()
     for source in ["penn_world_table", "world_bank_capital_stock"]:
@@ -126,6 +131,7 @@ def test_source_selection_is_logged(tmp_path, caplog):
     import logging
     from pyworldx.data.bridge import DataBridge
     from pyworldx.calibration.metrics import CrossValidationConfig
+
     aligned = tmp_path / "aligned"
     aligned.mkdir()
     pd.DataFrame({"year": [1970, 1980], "value": [1.0, 1.5]}).to_parquet(
@@ -142,6 +148,7 @@ def test_source_selection_is_logged(tmp_path, caplog):
 
 
 # ── T2-2: NR world3 reference not in engine map ───────────────────────
+
 
 def test_world3_nr_reference_not_in_engine_map():
     assert "world3_reference_nonrenewable_resources" not in ENTITY_TO_ENGINE_MAP

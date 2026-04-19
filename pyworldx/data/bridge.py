@@ -18,12 +18,14 @@ from __future__ import annotations
 
 import logging
 import time
-import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypedDict
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,9 @@ class DataBridgeError(Exception):
 _NORMALIZE_FALLBACK_WINDOW_YEARS: int = 5
 
 
-# ── EntityMapEntry TypedDict ──────────────────────────────────────────
-# Describes the structure of each value in ENTITY_TO_ENGINE_MAP.
-# Using total=False means all keys are optional — entries only need to
-# supply the fields relevant to their entity.
 class EntityMapEntry(TypedDict, total=False):
+    """Typed structure for entries in ENTITY_TO_ENGINE_MAP."""
+
     engine_var: str
     unit: str
     nrmsd_method: str
@@ -58,12 +58,11 @@ class EntityMapEntry(TypedDict, total=False):
 
 # ── World3 Layer-0 Namespace ─────────────────────────────────────────
 # Keys in this namespace are structural references excluded from the
-# calibration objective.  They are NOT targets.
+# calibration objective. They are NOT targets.
 #
 # World3 reference trajectories must NEVER appear in ENTITY_TO_ENGINE_MAP.
 # They are structural references only (Layer 0), not empirical targets.
 # Mapping them alongside real data creates circular calibration.
-
 WORLD3_NAMESPACE: dict[str, dict[str, Any]] = {
     "world3.population": {
         "source_id": "world3_reference_population",
@@ -128,15 +127,12 @@ WORLD3_NAMESPACE: dict[str, dict[str, Any]] = {
 #
 # Rule: world3_reference_* keys must NEVER appear here.
 # Rule: multi-source entities (SC, IC, AL) MUST have source_priority.
-
 ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
-    # ── Population ─────────────────────────────────────────────
     "population.total": {
         "engine_var": "POP",
         "unit": "persons",
         "nrmsd_method": "direct",
     },
-    # ── Industrial Capital (multi-source → deterministic priority) ──
     "industrial_capital": {
         "engine_var": "IC",
         "unit": "constant_2017_USD",
@@ -153,7 +149,6 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "constant_2017_USD",
         "nrmsd_method": "change_rate",
     },
-    # ── Service Capital (multi-source → deterministic priority) ────
     "service_capital": {
         "engine_var": "SC",
         "unit": "constant_2017_USD_PPP",
@@ -175,7 +170,6 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "constant_2015_USD_per_capita",
         "nrmsd_method": "change_rate",
     },
-    # ── Agriculture (multi-source land, single-source food) ────────
     "arable_land": {
         "engine_var": "AL",
         "unit": "hectares",
@@ -191,8 +185,6 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "hectares",
         "nrmsd_method": "direct",
     },
-    # ── Food Per Capita — FAOSTAT is the SOLE empirical source ─────
-    # world3_reference_food_per_capita is EXCLUDED (kg vs kcal collision).
     "food_per_capita": {
         "engine_var": "food_per_capita",
         "unit": "kcal_per_capita_per_day",
@@ -204,15 +196,12 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "kcal_per_capita_per_day",
         "nrmsd_method": "change_rate",
     },
-    # ── Pollution ──────────────────────────────────────────────────
-    # pollution_index_relative: dimensionless PPOLX — THIS is in the objective
     "pollution_index_relative": {
         "engine_var": "PPOLX",
         "unit": "dimensionless",
         "nrmsd_method": "change_rate",
         "description": "Dimensionless persistent pollution index.",
     },
-    # atmospheric_co2_ppm: excluded from default objective until ppm→index conversion exists
     "atmospheric_co2_ppm": {
         "engine_var": "C_atm_ppm",
         "unit": "ppm",
@@ -229,20 +218,16 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "Mt_CO2",
         "nrmsd_method": "change_rate",
     },
-    # ── Welfare & Development ──────────────────────────────────────
     "hdi.human_development_index": {
         "engine_var": "human_welfare_index",
         "unit": "dimensionless",
         "nrmsd_method": "direct",
     },
-    # ── Resources — BP proved reserves is the empirical anchor ─────
-    # world3_reference_nr_fraction_remaining is EXCLUDED (circular).
     "resources.nonrenewable_stock": {
         "engine_var": "NR",
         "unit": "resource_units",
         "nrmsd_method": "change_rate",
     },
-    # ── USGS Layer 3 cross-validation proxies ──────────────────────
     "resources.extraction_index": {
         "engine_var": "resource_extraction_index",
         "unit": "index_1996_eq_100",
@@ -253,10 +238,21 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "dimensionless",
         "nrmsd_method": "change_rate",
     },
-    # ── Phase 2: Carbon cycle ──────────────────────────────────────
-    "carbon.atmospheric_gtc": {"engine_var": "C_atm", "unit": "GtC", "nrmsd_method": "direct"},
-    "carbon.land_gtc": {"engine_var": "C_land", "unit": "GtC", "nrmsd_method": "direct"},
-    "carbon.soil_gtc": {"engine_var": "C_soc", "unit": "GtC", "nrmsd_method": "direct"},
+    "carbon.atmospheric_gtc": {
+        "engine_var": "C_atm",
+        "unit": "GtC",
+        "nrmsd_method": "direct",
+    },
+    "carbon.land_gtc": {
+        "engine_var": "C_land",
+        "unit": "GtC",
+        "nrmsd_method": "direct",
+    },
+    "carbon.soil_gtc": {
+        "engine_var": "C_soc",
+        "unit": "GtC",
+        "nrmsd_method": "direct",
+    },
     "carbon.ocean_surface_gtc": {
         "engine_var": "C_ocean_surf",
         "unit": "GtC",
@@ -267,7 +263,6 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "unit": "GtC",
         "nrmsd_method": "direct",
     },
-    # ── Phase 2: Cross-sector coupling signals ─────────────────────
     "finance.resilience": {
         "engine_var": "financial_resilience",
         "unit": "dimensionless",
@@ -296,42 +291,33 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
 }
 
 
-# ── Legacy engine_var lookup (backward compat for old code) ──────────
 def _get_engine_var(entity: str) -> str | None:
-    """Return the engine variable for an entity, from either old or new map format."""
+    """Return the engine variable for an entity."""
     entry = ENTITY_TO_ENGINE_MAP.get(entity)
     if entry is None:
         return None
-    if isinstance(entry, str):
-        return entry
     return entry.get("engine_var")
 
 
-# ── NRMSD method per engine var (derived from the rich map above) ─────
 NRMSD_METHOD: dict[str, str] = {}
 for _entity, _entry in ENTITY_TO_ENGINE_MAP.items():
-    if isinstance(_entry, dict):
-        _ev = _entry.get("engine_var")
-        _method = _entry.get("nrmsd_method", "direct")
-        if _ev:
-            NRMSD_METHOD[_ev] = _method
+    _ev = _entry.get("engine_var")
+    _method = _entry.get("nrmsd_method", "direct")
+    if _ev:
+        NRMSD_METHOD[_ev] = _method
 
 
 @dataclass
 class CalibrationTarget:
-    """A time-series target for NRMSD comparison.
+    """A time-series target for NRMSD comparison."""
 
-    Represents one empirical observation to compare against engine output.
-    The bridge produces these from pipeline ConnectorResult objects.
-    """
-
-    variable_name: str  # Engine variable (e.g., "POP")
-    years: np.ndarray[Any, Any]  # Year indices (integer years)
-    values: np.ndarray[Any, Any]  # Observed values at those years
-    unit: str  # Unit string (for provenance)
-    weight: float = 1.0  # Weight in composite NRMSD
-    source: str = ""  # Provenance description
-    nrmsd_method: str = "direct"  # "direct" or "change_rate"
+    variable_name: str
+    years: np.ndarray[Any, Any]
+    values: np.ndarray[Any, Any]
+    unit: str
+    weight: float = 1.0
+    source: str = ""
+    nrmsd_method: str = "direct"
 
 
 @dataclass
@@ -341,34 +327,24 @@ class BridgeResult:
     per_variable_nrmsd: dict[str, float]
     composite_nrmsd: float
     n_targets: int
-    coverage: dict[str, tuple[int, int]]  # variable -> (start_year, end_year)
+    coverage: dict[str, tuple[int, int]]
 
 
 class DataBridge:
-    """Connects data pipeline outputs to engine calibration.
+    """Connects data pipeline outputs to engine calibration."""
 
-    Supports two constructor call styles:
-      # New style (preflight plan contracts):
-      bridge = DataBridge(aligned_dir=tmp_path, config=CrossValidationConfig())
-      # Legacy style (backward compat):
-      bridge = DataBridge(normalize=True)
-    """
-
-    # Class-level cache TTL (days). Files older than this trigger a WARNING.
     cache_ttl: int = 30
 
     def __init__(
         self,
         reference_year: Optional[int] = None,
         normalize: bool = True,
-        entity_map: Optional[dict[str, Any]] = None,
-        # New-style kwargs
+        entity_map: Optional[dict[str, EntityMapEntry]] = None,
         aligned_dir: Optional[Path] = None,
         config: Any = None,
     ) -> None:
         self.normalize = normalize
         self.entity_map = entity_map or ENTITY_TO_ENGINE_MAP
-        # New-style: aligned_dir and config override reference_year
         self._aligned_dir = aligned_dir
         self._config = config
         if config is not None:
@@ -385,31 +361,15 @@ class DataBridge:
         aligned_dir: Optional[Path] = None,
         weights: Optional[dict[str, float]] = None,
         sector: Optional[str] = None,
-    ) -> list["CalibrationTarget"]:
-        """Load aligned Parquet data as calibration targets.
-
-        Supports both new-style (no positional args when aligned_dir set in __init__)
-        and legacy-style (aligned_dir as first positional arg).
-
-        Args:
-            aligned_dir: Path to aligned Parquet store.  If None, uses self._aligned_dir.
-            weights: Optional per-variable weights (default: equal).
-            sector: If provided, only load targets for that sector.
-
-        Raises:
-            DataBridgeError: if any required Parquet file is missing.
-
-        Returns:
-            List of CalibrationTarget objects.
-        """
+    ) -> list[CalibrationTarget]:
+        """Load aligned Parquet data as calibration targets."""
         resolved_dir = aligned_dir or self._aligned_dir
         if resolved_dir is None:
             raise DataBridgeError(
-                "No aligned_dir provided. Pass it to DataBridge() or to load_targets()."
-                " Run: python -m data_pipeline --align"
+                "No aligned_dir provided. Pass it to DataBridge() or to load_targets(). "
+                "Run: python -m data_pipeline --align"
             )
 
-        # Check the dir itself exists
         resolved_dir = Path(resolved_dir)
         if not resolved_dir.is_dir():
             raise DataBridgeError(
@@ -422,7 +382,6 @@ class DataBridge:
         except (ImportError, ModuleNotFoundError):
             read_aligned = None  # type: ignore[assignment]
 
-        # Staleness and existence check
         now = time.time()
         ttl_secs = self.cache_ttl * 86400
         missing_entities: list[str] = []
@@ -430,7 +389,6 @@ class DataBridge:
         for entity in self.entity_map:
             safe_name = entity.replace(".", "_")
             candidates = list(resolved_dir.glob(f"{safe_name}*.parquet"))
-            # Also try without sub-suffix
             direct = resolved_dir / f"{safe_name}.parquet"
             if direct.exists():
                 candidates = [direct]
@@ -439,8 +397,8 @@ class DataBridge:
                 missing_entities.append(entity)
                 continue
 
-            for p in candidates:
-                age_secs = now - p.stat().st_mtime
+            for path in candidates:
+                age_secs = now - path.stat().st_mtime
                 if age_secs > ttl_secs:
                     age_days = age_secs / 86400
                     logger.warning(
@@ -466,24 +424,16 @@ class DataBridge:
         targets: list[CalibrationTarget] = []
 
         for entity, entry in self.entity_map.items():
-            if isinstance(entry, dict):
-                engine_var = entry.get("engine_var", "")
-                excluded = entry.get("excluded_from_objective", False)
-                source_priority: list[str] = entry.get("source_priority", [])
-            else:
-                engine_var = str(entry)
-                excluded = False
-                source_priority = []
+            engine_var = entry.get("engine_var", "")
+            excluded = entry.get("excluded_from_objective", False)
+            source_priority = entry.get("source_priority", [])
 
             if excluded:
                 continue
 
             safe_name = entity.replace(".", "_")
-
-            # Source priority waterfall: try each source in order, log fallbacks.
-            # If source_priority is empty, fall through to the default entity name.
-            selected_source_idx: int = 0
             df = None
+
             if source_priority:
                 for idx, source_id in enumerate(source_priority):
                     candidate_name = source_id.replace(".", "_")
@@ -498,15 +448,14 @@ class DataBridge:
                         else:
                             logger.info(
                                 "DataBridge: '%s' -> fell back to source '%s' "
-                                "(priority %d; sources 0-%d unavailable)",
+                                "(priority %d; earlier sources unavailable)",
                                 entity,
                                 source_id,
                                 idx,
-                                idx - 1,
                             )
                         df = candidate_df
-                        selected_source_idx = idx
                         break
+
                 if df is None:
                     logger.warning(
                         "DataBridge: '%s' -> all %d sources in source_priority exhausted; "
@@ -522,7 +471,9 @@ class DataBridge:
             if df is None or df.empty:
                 continue
 
-            # Filter to world aggregate
+            if sector is not None and entry.get("engine_var") != sector:
+                pass
+
             if "country_code" in df.columns:
                 df = df[df["country_code"].isin(["WLD", "World", "5000"])]
 
@@ -552,10 +503,7 @@ class DataBridge:
             if len(years) < 3:
                 continue
 
-            if isinstance(entry, dict):
-                method = entry.get("nrmsd_method", NRMSD_METHOD.get(engine_var, "direct"))
-            else:
-                method = NRMSD_METHOD.get(engine_var, "direct")
+            method = entry.get("nrmsd_method", NRMSD_METHOD.get(engine_var, "direct"))
             weight = (weights or {}).get(engine_var, 1.0)
 
             unit = "unknown"
@@ -587,44 +535,30 @@ class DataBridge:
 
     def _normalize_to_index(
         self,
-        series: "pd.Series[float]",
+        series: pd.Series[float],
         base_year: int,
-    ) -> "pd.Series[float]":
+    ) -> pd.Series[float]:
         """Normalize series so that series[base_year] == 1.0.
 
         Zero-guard: if series[base_year] is 0 or NaN, falls back to the
         first non-zero value within ±_NORMALIZE_FALLBACK_WINDOW_YEARS years
         of base_year, emitting a WARNING. Raises DataBridgeError if no
         non-zero fallback exists.
-
-        Args:
-            series: Year-indexed pd.Series.
-            base_year: The reference year (must be CrossValidationConfig.train_start).
-
-        Returns:
-            Normalized pd.Series (same index as input).
-
-        Raises:
-            DataBridgeError: if no non-zero base value can be found near base_year.
         """
-        import pandas as pd
-
         base_val: float | None = None
 
-        # Try exact match
         if base_year in series.index:
-            v = float(series[base_year])
-            if np.isfinite(v) and v != 0.0:
-                base_val = v
+            exact_value = float(series[base_year])
+            if np.isfinite(exact_value) and exact_value != 0.0:
+                base_val = exact_value
 
-        # Fallback: search ±_NORMALIZE_FALLBACK_WINDOW_YEARS years
         if base_val is None:
             for delta in range(1, _NORMALIZE_FALLBACK_WINDOW_YEARS + 1):
-                for candidate in [base_year + delta, base_year - delta]:
+                for candidate in (base_year + delta, base_year - delta):
                     if candidate in series.index:
-                        v = float(series[candidate])
-                        if np.isfinite(v) and v != 0.0:
-                            base_val = v
+                        candidate_value = float(series[candidate])
+                        if np.isfinite(candidate_value) and candidate_value != 0.0:
+                            base_val = candidate_value
                             logger.warning(
                                 "_normalize_to_index: base_year=%d has zero/NaN value; "
                                 "falling back to year=%d (delta=%d).",
@@ -644,7 +578,6 @@ class DataBridge:
             )
 
         result = series / base_val
-        # Ensure no inf/NaN introduced by normalisation itself
         result = result.replace([np.inf, -np.inf], np.nan)
         return result
 
@@ -653,15 +586,7 @@ class DataBridge:
         results: dict[str, Any],
         weights: Optional[dict[str, float]] = None,
     ) -> list[CalibrationTarget]:
-        """Load targets from PipelineConnectorResult dict.
-
-        Args:
-            results: Dict mapping entity name to PipelineConnectorResult
-            weights: Optional per-variable weights
-
-        Returns:
-            List of CalibrationTarget objects.
-        """
+        """Load targets from PipelineConnectorResult dict."""
         targets: list[CalibrationTarget] = []
 
         for entity, result in results.items():
@@ -669,12 +594,10 @@ class DataBridge:
             if entry is None:
                 continue
 
-            if isinstance(entry, dict):
-                engine_var = entry.get("engine_var", "")
-                if not engine_var or entry.get("excluded_from_objective", False):
-                    continue
-            else:
-                engine_var = str(entry)
+            engine_var = entry.get("engine_var", "")
+            if not engine_var or entry.get("excluded_from_objective", False):
+                continue
+
             series = result.series
             if series is None or series.empty:
                 continue
@@ -712,19 +635,7 @@ class DataBridge:
         engine_trajectories: dict[str, np.ndarray[Any, Any]],
         engine_time: np.ndarray[Any, Any],
     ) -> BridgeResult:
-        """Compare engine trajectories against calibration targets.
-
-        Both engine and observed data are normalized to reference_year
-        baseline if self.normalize is True, then NRMSD is computed.
-
-        Args:
-            targets: Calibration targets from load_targets()
-            engine_trajectories: Engine.run().trajectories dict
-            engine_time: Engine.run().time_index (absolute years)
-
-        Returns:
-            BridgeResult with per-variable and composite NRMSD.
-        """
+        """Compare engine trajectories against calibration targets."""
         per_var: dict[str, float] = {}
         coverage: dict[str, tuple[int, int]] = {}
         total_weight = 0.0
@@ -735,8 +646,6 @@ class DataBridge:
                 continue
 
             engine_traj = engine_trajectories[target.variable_name]
-
-            # Interpolate engine to target years
             engine_at_years = np.interp(
                 target.years.astype(float),
                 engine_time.astype(float),
@@ -745,7 +654,6 @@ class DataBridge:
             obs_values = target.values
 
             if self.normalize:
-                # Normalize both to reference year
                 engine_at_years, obs_values = self._normalize_pair(
                     engine_at_years,
                     obs_values,
@@ -754,7 +662,6 @@ class DataBridge:
                     engine_time,
                 )
 
-            # Compute NRMSD
             nrmsd = self._compute_nrmsd(
                 engine_at_years,
                 obs_values,
@@ -763,7 +670,10 @@ class DataBridge:
 
             if np.isfinite(nrmsd):
                 per_var[target.variable_name] = nrmsd
-                coverage[target.variable_name] = (int(target.years[0]), int(target.years[-1]))
+                coverage[target.variable_name] = (
+                    int(target.years[0]),
+                    int(target.years[-1]),
+                )
                 weighted_sum += target.weight * nrmsd
                 total_weight += target.weight
 
@@ -782,26 +692,23 @@ class DataBridge:
         start_year: int,
         end_year: int,
     ) -> list[CalibrationTarget]:
-        """Return targets with years clipped to [start_year, end_year].
-
-        Targets with fewer than 3 points after clipping are dropped.
-        """
+        """Return targets with years clipped to [start_year, end_year]."""
         clipped: list[CalibrationTarget] = []
-        for t in targets:
-            mask = (t.years >= start_year) & (t.years <= end_year)
-            years = t.years[mask]
-            values = t.values[mask]
+        for target in targets:
+            mask = (target.years >= start_year) & (target.years <= end_year)
+            years = target.years[mask]
+            values = target.values[mask]
             if len(years) < 3:
                 continue
             clipped.append(
                 CalibrationTarget(
-                    variable_name=t.variable_name,
+                    variable_name=target.variable_name,
                     years=years,
                     values=values,
-                    unit=t.unit,
-                    weight=t.weight,
-                    source=t.source,
-                    nrmsd_method=t.nrmsd_method,
+                    unit=target.unit,
+                    weight=target.weight,
+                    source=target.source,
+                    nrmsd_method=target.nrmsd_method,
                 )
             )
         return clipped
@@ -810,23 +717,13 @@ class DataBridge:
         self,
         targets: list[CalibrationTarget],
         engine_factory: Callable[
-            [dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]
+            [dict[str, float]],
+            tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
         ],
         train_start: Optional[int] = None,
         train_end: Optional[int] = None,
     ) -> Callable[[dict[str, float]], float]:
-        """Build NRMSD objective function from targets.
-
-        Args:
-            targets: Calibration targets
-            engine_factory: Callable(params) -> (trajectories, time_index)
-            train_start: If provided, clip targets to years >= train_start
-            train_end: If provided, clip targets to years <= train_end
-
-        Returns:
-            Callable mapping parameter dict -> scalar NRMSD.
-        """
-        # Pre-clip to train window (no per-call overhead)
+        """Build NRMSD objective function from targets."""
         active_targets = targets
         if train_start is not None or train_end is not None:
             lo = train_start if train_start is not None else int(targets[0].years.min())
@@ -849,24 +746,13 @@ class DataBridge:
         targets: list[CalibrationTarget],
         engine_factory: Callable[
             [dict[str, float]],
-            tuple[dict[str, "np.ndarray[Any, Any]"], "np.ndarray[Any, Any]"],
+            tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
         ],
         params: dict[str, float],
         validate_start: int,
         validate_end: int,
-    ) -> "BridgeResult":
-        """Evaluate NRMSD on the holdout validation window only.
-
-        Args:
-            targets: All calibration targets (clipped to validation years internally)
-            engine_factory: Callable(params) -> (trajectories, time_index)
-            params: Parameter dict to evaluate
-            validate_start: First year of the holdout window (inclusive)
-            validate_end: Last year of the holdout window (inclusive)
-
-        Returns:
-            BridgeResult computed on validation years only.
-        """
+    ) -> BridgeResult:
+        """Evaluate NRMSD on the holdout validation window only."""
         val_targets = self._clip_targets_to_window(targets, validate_start, validate_end)
         try:
             trajectories, time_index = engine_factory(params)
@@ -888,7 +774,6 @@ class DataBridge:
         full_engine_time: np.ndarray[Any, Any],
     ) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
         """Normalize both series to reference year baseline."""
-        # Engine value at reference year
         engine_ref = float(
             np.interp(
                 self.reference_year,
@@ -896,8 +781,6 @@ class DataBridge:
                 full_engine_traj,
             )
         )
-
-        # Observed value at reference year (interpolated)
         obs_ref = float(
             np.interp(
                 self.reference_year,
@@ -906,7 +789,6 @@ class DataBridge:
             )
         )
 
-        # Avoid division by zero
         if abs(engine_ref) < 1e-15:
             engine_ref = 1.0
         if abs(obs_ref) < 1e-15:
@@ -925,7 +807,6 @@ class DataBridge:
             return float("nan")
 
         if method == "change_rate" and len(model) >= 2:
-            # Annual percent change
             model_pct = (
                 np.diff(model) / np.where(np.abs(model[:-1]) > 1e-15, model[:-1], 1.0) * 100.0
             )
@@ -946,7 +827,6 @@ class DataBridge:
                 return float("nan")
             return float(np.sqrt(np.mean((model_pct - ref_pct) ** 2)) / mean_ref)
 
-        # Direct method
         mean_ref = np.mean(np.abs(reference))
         if mean_ref < 1e-15:
             return float("nan")
