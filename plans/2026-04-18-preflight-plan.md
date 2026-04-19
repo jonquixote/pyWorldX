@@ -1,239 +1,765 @@
-# Pre-Flight Remediation Plan
-**Branch:** `phase-2-remediation`  
-**Date:** 2026-04-18  
-**Prerequisite:** Complete all items in this plan before running `EmpiricalCalibrationRunner` or any NRMSD-based calibration.  
-**Cross-reference:** `plans/preflight_audit.md`, `plans/Full-System Calibration Plan for pyWorldX (Phase 2 Remediation).md`
+# Pre-Flight Remediation Plan — TDD Edition
+
+**Branch:** `phase-2-remediation`
+**Date:** 2026-04-18
+**Workflow:** Write the failing test (RED) → implement to the Contract → confirm the Gate (GREEN).
+**Rule:** No ticket is "done" until its specific Gate command passes AND the unit test suite (`pytest tests/unit/ -x -q`) stays green.
+**Prerequisite:** All tickets in this plan must be GREEN before running `EmpiricalCalibrationRunner`.
 
 ---
 
-## Tier 1 — Hard Blockers (Calibration Output is Invalid Without These)
+## How to Read This Document
 
-These four issues will produce numerically nonsensical NRMSD scores. Fix in sequence.
+Each ticket has five sections:
+
+| Section | Purpose |
+|---|---|
+| **Context** | What exists today and why it is wrong |
+| **Failing Test** | Exact pytest code — write this first, confirm it is RED |
+| **Contract** | The interface or behavior the implementation must satisfy |
+| **Constraints** | What must NOT change (regression fence) |
+| **Gate** | Copy-paste shell command that proves completion |
 
 ---
 
-### T1-1 · Fix Pollution Index Unit Mismatch in `map.py`
+## Tier 1 — Hard Blockers
 
-**File:** `data_pipeline/map.py`  
-**Problem:** `world3_reference_pollution_index` (dimensionless, ~1.0 at 1970) is mapped to the same `CalibrationTarget` entity as `atmospheric.co2` (units: ppm, ~325 at 1970). Dividing a dimensionless index by a ppm value produces a ratio ~0.003 instead of 1.0, corrupting NRMSD for the entire pollution sector.
+These four issues produce numerically nonsensical NRMSD scores. Fix in order.
 
-**Fix:**
-- Separate into two distinct entities: `pollution_index_relative` (for the World3 reference trajectory) and `atmospheric_co2_ppm` (for Keeling Curve / GCP data).
-- Namespace the World3 reference to `world3.pollution_index` — it must **never** appear in `ENTITY_TO_ENGINE_MAP` as an empirical target.
-- Update `ENTITY_TO_ENGINE_MAP` so `pollution_index_relative` maps to the engine's `PPOLX` variable and `atmospheric_co2_ppm` is tagged `unit_mismatch=True` and excluded from the default objective until a ppm→index conversion factor is implemented.
-- This is part of the broader World3 reference → real-entity retirement: see calibration plan §0.3 and §0.4.
+---
 
-**Acceptance test:** `assert targets["pollution_index_relative"].values[0] == pytest.approx(1.0, abs=0.05)` (value at `train_start=1970`).
+### T1-1 · Fix Pollution Index / CO₂ Unit Mismatch in `map.py`
+
+**Context**
+`world3_reference_pollution_index` (dimensionless, ~1.0 at 1970) and `atmospheric.co2`
+(ppm, ~325 at 1970) are mapped to the same `CalibrationTarget` entity. Dividing a dimensionless
+index by a ppm value produces ~0.003 instead of 1.0, corrupting NRMSD for the entire pollution
+sector silently.
+
+**Failing Test**
+```python
+# tests/test_map_entities.py
+from data_pipeline.map import ENTITY_TO_ENGINE_MAP, WORLD3_NAMESPACE
+
+def test_pollution_index_and_co2_are_separate_entities():
+    assert "pollution_index_relative" in ENTITY_TO_ENGINE_MAP, (
+        "pollution_index_relative missing from ENTITY_TO_ENGINE_MAP"
+    )
+    assert "atmospheric_co2_ppm" in ENTITY_TO_ENGINE_MAP, (
+        "atmospheric_co2_ppm missing from ENTITY_TO_ENGINE_MAP"
+    )
+
+def test_atmospheric_co2_excluded_from_objective():
+    entry = ENTITY_TO_ENGINE_MAP["atmospheric_co2_ppm"]
+    assert entry.get("unit_mismatch") is True
+    assert entry.get("excluded_from_objective") is True, (
+        "atmospheric_co2_ppm must be excluded from default objective "
+        "until a ppm→index conversion is implemented."
+    )
+
+def test_pollution_index_maps_to_ppolx():
+    entry = ENTITY_TO_ENGINE_MAP["pollution_index_relative"]
+    assert entry["engine_var"] == "PPOLX"
+
+def test_pollution_index_normalized_at_train_start():
+    import pytest, pandas as pd
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    import pathlib
+    b = DataBridge(
+        aligned_dir=pathlib.Path("output/aligned"),
+        config=CrossValidationConfig()
+    )
+    targets = b.load_targets(sector="pollution")
+    ppolx = next(t for t in targets if t.variable == "PPOLX")
+    idx = dict(zip(ppolx.years, ppolx.values))
+    assert idx[CrossValidationConfig.train_start] == pytest.approx(1.0, abs=0.05), (
+        f"PPOLX index at train_start is {idx[CrossValidationConfig.train_start]:.4f}, "
+        "expected 1.0 ± 0.05."
+    )
+
+def test_world3_pollution_index_namespaced():
+    assert "world3.pollution_index" in WORLD3_NAMESPACE
+```
+
+**Contract**
+- `ENTITY_TO_ENGINE_MAP["pollution_index_relative"]["engine_var"] == "PPOLX"`
+- `ENTITY_TO_ENGINE_MAP["atmospheric_co2_ppm"]["unit_mismatch"] == True`
+- `ENTITY_TO_ENGINE_MAP["atmospheric_co2_ppm"]["excluded_from_objective"] == True`
+- `WORLD3_NAMESPACE["world3.pollution_index"]` exists.
+- `world3_reference_pollution_index` must not appear as any key in `ENTITY_TO_ENGINE_MAP`.
+
+**Constraints**
+- Do NOT alter any other entity in `ENTITY_TO_ENGINE_MAP`.
+- Do NOT change any connector's Parquet output schema.
+
+**Gate**
+```bash
+pytest tests/unit/test_map_entities.py -v
+pytest tests/unit/ -x -q --tb=short
+```
 
 ---
 
 ### T1-2 · Fix Food Per Capita Unit Collision in `map.py`
 
-**File:** `data_pipeline/map.py`  
-**Problem:** `world3_reference_food_per_capita` (kg/person/yr) and `faostat_food_balance_historical`
-(kcal/capita/day) are merged under the same pipeline entity `food_per_capita` with no conversion
-applied. The two series differ by a factor of ~1,000 at 1970, which blows out the food-sector NRMSD.
+**Context**
+`world3_reference_food_per_capita` (kg/person/yr) and `faostat_food_balance_historical`
+(kcal/capita/day) are merged under the single pipeline entity `food_per_capita` with no
+conversion. The two series differ by ~1,000× at 1970, silently blowing out food-sector NRMSD
+without raising any error.
 
-**Fix:**
-- Namespace `world3_reference_food_per_capita` to `world3.food_per_capita` and exclude from the
-  empirical `ENTITY_TO_ENGINE_MAP`.
-- Keep FAOSTAT as the sole empirical food entity.
-- **Recommended approach — keep as separate entities:** Let `DataBridge._normalize_to_index()`
-  handle alignment via index normalization. Both series index to `1.0 ± 0.10` at 1970 without
-  requiring any unit conversion. This is preferred because a single kcal/kg scalar is ambiguous
-  across crop types (cereal ≈ 1,800 kcal/kg, legumes ≈ 3,400 kcal/kg, etc.).
-- If a merged series is required in future, the correct conversion is:
-  - 1,800 kcal/kg cereal equivalent → `1 kg/yr = 1800 / 365 = 4.93 kcal/day`
-  - Therefore: `1 kcal/day = 1 / 4.93 ≈ 0.203 kg/yr` (not 0.0547 — previous figure was incorrect)
-  - Apply as a `ConversionStep` dataclass before merging.
-- In the display/reporting layer, convert internal `fpc` (kg/person/yr) to kcal/person/day via
-  `kcal/day = kg/yr × (1800 / 365)` ≈ `kg/yr × 4.93`. Ensure threshold queries (e.g., < 2500
-  kcal/day) use this converted series.
+**Failing Test**
+```python
+# tests/test_map_entities.py  (append)
 
-**Acceptance test:** After normalization, both series index to `1.0 ± 0.10` at 1970.
+def test_world3_food_reference_not_in_engine_map():
+    assert "world3_reference_food_per_capita" not in ENTITY_TO_ENGINE_MAP, (
+        "world3_reference_food_per_capita is in ENTITY_TO_ENGINE_MAP. "
+        "Mixing kg/person/yr with kcal/capita/day corrupts NRMSD. "
+        "Namespace it to world3.food_per_capita and exclude it from the objective."
+    )
+
+def test_world3_food_reference_is_namespaced():
+    assert "world3.food_per_capita" in WORLD3_NAMESPACE
+
+def test_faostat_is_sole_empirical_food_entity():
+    food_entities = [k for k in ENTITY_TO_ENGINE_MAP if "food" in k.lower()]
+    assert all("faostat" in e or e == "food_per_capita" for e in food_entities), (
+        f"Non-FAOSTAT food entities in ENTITY_TO_ENGINE_MAP: {food_entities}"
+    )
+
+def test_food_per_capita_normalized_at_train_start():
+    import pytest, pathlib
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    b = DataBridge(
+        aligned_dir=pathlib.Path("output/aligned"),
+        config=CrossValidationConfig()
+    )
+    targets = b.load_targets(sector="agriculture")
+    fpc = next((t for t in targets if "food" in t.variable.lower()), None)
+    assert fpc is not None, "No food per capita target in agriculture sector"
+    idx = dict(zip(fpc.years, fpc.values))
+    base = CrossValidationConfig.train_start
+    assert idx[base] == pytest.approx(1.0, abs=0.10), (
+        f"food_per_capita index at {base} is {idx[base]:.4f}, expected 1.0 ± 0.10. "
+        "Check that FAOSTAT is the sole source and _normalize_to_index uses train_start."
+    )
+```
+
+**Contract**
+- `world3_reference_food_per_capita` absent from `ENTITY_TO_ENGINE_MAP` at every key.
+- `WORLD3_NAMESPACE["world3.food_per_capita"]` exists.
+- `ENTITY_TO_ENGINE_MAP` contains at most one food entity; it must be sourced exclusively
+  from FAOSTAT.
+- Short-term path: keep the two series as separate entities and let
+  `DataBridge._normalize_to_index()` handle alignment via index normalization.
+  Do NOT silently merge before normalization.
+
+**Constraints**
+- Do NOT change the FAOSTAT connector's Parquet output schema.
+- Do NOT alter any other entity in `ENTITY_TO_ENGINE_MAP`.
+
+**Gate**
+```bash
+pytest tests/unit/test_map_entities.py::test_world3_food_reference_not_in_engine_map -v
+pytest tests/unit/test_map_entities.py::test_food_per_capita_normalized_at_train_start -v
+```
 
 ---
 
-### T1-3 · Fix FAOSTAT World Country Code in `faostat_food_balance_historical` Connector
+### T1-3 · Fix FAOSTAT World Country Code
 
-**File:** `data_pipeline/connectors/faostat_food_balance_historical.py` (or equivalent config)  
-**Problem:** Connector passes `world_country_code="WLD"` to the FAOSTAT API. The correct aggregate code for World totals in FAOSTAT is `"5000"`. With `"WLD"`, the filter returns zero rows silently — the entire 1961–2013 FBSH series is missing from the pipeline cache without raising any error.
+**Context**
+The FAOSTAT Food Balance Sheet Historical connector passes `world_country_code="WLD"` to the
+API. FAOSTAT's correct world-aggregate area code is `"5000"`. With `"WLD"` the API returns zero
+rows silently — the entire 1961–2013 FBSH series is absent from the pipeline cache with no
+error raised.
 
-**Fix:**
-- Change `world_country_code="WLD"` → `world_country_code="5000"` (or `area_code=5000` depending on the API wrapper used).
-- Add a post-fetch assertion: `assert len(df) > 0, "FAOSTAT FBSH returned empty — check area_code"`.
-- Re-run the connector to regenerate the Parquet cache.
+**Failing Test**
+```python
+# tests/test_preflight_gates.py
+import pytest
 
-**Acceptance test:** `len(load_parquet("faostat_food_balance_historical")) > 40` (expect ~52 rows for 1961–2013).
+def test_faostat_area_code_is_numeric():
+    from data_pipeline.connectors.faostat_food_balance_historical import FAOSTATFBSHConnector
+    c = FAOSTATFBSHConnector()
+    assert c.world_area_code == "5000", (
+        f"Expected '5000', got '{c.world_area_code}'. "
+        "FAOSTAT rejects 'WLD' — use numeric code."
+    )
+
+def test_faostat_world_area_code_is_named_attribute():
+    """Ensure area code is a named class attribute, not an inline string literal."""
+    from data_pipeline.connectors.faostat_food_balance_historical import FAOSTATFBSHConnector
+    assert hasattr(FAOSTATFBSHConnector, "world_area_code"), (
+        "world_area_code must be a named class attribute so it is overridable in tests."
+    )
+
+def test_faostat_fetch_raises_on_empty_result(monkeypatch):
+    from data_pipeline.connectors.faostat_food_balance_historical import FAOSTATFBSHConnector
+    import pandas as pd
+    c = FAOSTATFBSHConnector()
+    monkeypatch.setattr(c, "_raw_fetch", lambda: pd.DataFrame())
+    with pytest.raises(AssertionError, match="FAOSTAT FBSH returned empty"):
+        c.fetch()
+
+def test_faostat_cache_has_sufficient_rows():
+    """After fix, cached data must have at least 40 rows (expect ~52 for 1961–2013)."""
+    from data_pipeline.connectors.faostat_food_balance_historical import FAOSTATFBSHConnector
+    import pathlib
+    cache_path = pathlib.Path("output/aligned/faostat_food_balance_historical.parquet")
+    if not cache_path.exists():
+        pytest.skip("Parquet cache not yet generated — run connector first")
+    import pandas as pd
+    df = pd.read_parquet(cache_path)
+    assert len(df) > 40, (
+        f"FAOSTAT FBSH cache has {len(df)} rows, expected >40. "
+        "Regenerate after fixing world_area_code."
+    )
+```
+
+**Contract**
+- `FAOSTATFBSHConnector.world_area_code: str = "5000"` (named class attribute).
+- `fetch()` calls `_raw_fetch()` internally; raises `AssertionError("FAOSTAT FBSH returned
+  empty — check area_code")` when result has zero rows after filtering.
+- `_raw_fetch()` is injectable (used by monkeypatch in tests).
+
+**Constraints**
+- Do NOT change the Parquet output schema.
+- Do NOT change any other connector.
+
+**Gate**
+```bash
+pytest tests/unit/test_preflight_gates.py::test_faostat_area_code_is_numeric -v
+pytest tests/unit/test_preflight_gates.py::test_faostat_fetch_raises_on_empty_result -v
+# After regenerating cache:
+pytest tests/unit/test_preflight_gates.py::test_faostat_cache_has_sufficient_rows -v
+```
 
 ---
 
 ### T1-4 · Fix `initial_conditions.py` Default Year
 
-**File:** `pyworldx/calibration/initial_conditions.py`  
-**Problem:** `target_year` defaults to `1900` rather than `1970`. Any call site that does not explicitly pass `target_year=1970` will initialize World3 stocks from pre-industrial era values. The World3-03 model is not validated before 1900 and the stock trajectories diverge severely before reaching 1970.
+**Context**
+`target_year` defaults to `1900`. Any call site omitting `target_year` initializes World3 stocks
+from pre-industrial values, causing severe divergence before the calibration window opens at 1970.
+Additionally, literal `1970` integers are scattered across `pyworldx/` and `data_pipeline/`,
+meaning a future `CrossValidationConfig.train_start` change will silently break window alignment.
 
-**Fix:**
-- Change function/class default: `target_year: int = 1970`.
-- Grep the entire codebase for `initial_conditions(` without `target_year=` and audit each call site.
-- Add a `ValueError` guard: `if target_year < 1900 or target_year > 2100: raise ValueError(...)`.
-- Add assertion: `assert target_year <= CrossValidationConfig.train_start` — the simulation
-  must start *at or before* the calibration window opens so that a valid state vector exists
-  at `train_start`. A `target_year` greater than `train_start` would leave the 1970–`target_year`
-  window without simulation data.
-- **Replace all literal `1970` integers** in `pyworldx/` and `data_pipeline/` with
-  `CrossValidationConfig.train_start` — see T2-5.
-
-**Acceptance test:** `get_initial_conditions()` (no arguments) returns the 1970 stock vector;
-`get_initial_conditions(target_year=1900)` still works when explicitly requested.
-
----
-
-## Tier 2 — Pre-Calibration Data Quality (Fix Before First Optimizer Run)
-
-These issues will not crash calibration, but will silently degrade fit quality or produce misleading NRMSD scores.
-
----
-
-### T2-1 · Resolve Multi-Source Fan-In Conflicts for SC, IC, AL
-
-**Files:** `data_pipeline/map.py`, `pyworldx/data/bridge.py` (when created)  
-**Problem:** `service_capital` (SC), `industrial_capital` (IC), and `arable_land` (AL) each receive data from 2–3 connectors with incompatible units and no arbitration logic. Last-write in Python dict iteration order determines which series is used — non-deterministic across Python versions.
-
-**Fix:**
-- Add a `source_priority` list to each multi-source entity in `ENTITY_TO_ENGINE_MAP`:
-  ```python
-  "service_capital": {
-      "engine_var": "SC",
-      "sources": ["penn_world_table", "world_bank_capital_stock", "gapminder_gdp_per_capita"],
-      "source_priority": ["penn_world_table", "world_bank_capital_stock", "gapminder_gdp_per_capita"],
-      "unit": "constant_2017_usd_ppp"
-  }
-  ```
-- Authoritative source assignments (recommended):
-
-  | Stock | Authoritative Source | Unit |
-  |---|---|---|
-  | SC | PWT `rgdpe` per capita | constant 2017 USD PPP |
-  | IC | PWT `rnna` world-summed | constant 2017 USD (deflator step required vs. UNIDO/WB 2015) |
-  | AL | FAOSTAT RL `arable_land` | 1000 ha (×1000 to reach ha) |
-
-- In `DataBridge.load_targets()`, implement priority-waterfall: use highest-priority source where non-null, fall back in order.
-- Log which source was selected for each entity and year range to the calibration report.
-
-**Acceptance test:** `load_targets()` is deterministic across 100 repeated calls with shuffled source registration order.
-
----
-
-### T2-2 · Add BP Statistical Review Proved Reserves for NR
-
-**Files:** `data_pipeline/connectors/` (new file), `data_pipeline/map.py`  
-**Problem:** There is no continuous observed nonrenewable resource stock series in the pipeline. `usgs_mcs` delivers metadata strings. The `world3_reference_nonrenewable_resources` trajectory is the only current NR input — this is circular calibration. The resource sector is entirely synthetic without a real empirical anchor.
-
-**Fix:**
-- Add `BPStatisticalReviewConnector` to fetch proved reserves time-series (oil + gas + coal combined, EJ or Gtoe) from the OWID/BP mirror: `https://raw.githubusercontent.com/owid/owid-datasets/master/datasets/`.
-- Map to entity `nonrenewable_resources_proved_reserves` with `unit="EJ"`, tagged `layer=1` (observed proxy).
-- Add conversion: `EJ → World3 NR resource units` (calibrate scalar against 1970 World3-03 NR initial value of ~1.0 × 10¹²).
-- Keep `world3_reference_nonrenewable_resources` namespaced to `world3.nr_fraction` as `layer=0` (structural reference only) — **never** include it in `ENTITY_TO_ENGINE_MAP`.
-- Tag USGS extraction index and depletion ratio as `layer=2` (secondary cross-validation proxy, not primary objective signal).
-
-**Acceptance test:** Series covers at least 1965–2023 with no more than 3 consecutive missing years.
-
----
-
-### T2-3 · Implement Zero-Guard in `_normalize_to_index()`
-
-**File:** `pyworldx/data/bridge.py` (when created)  
-**Problem:** Several USGS and early World Bank series have zero-padded years before 1960. If `X(train_start) = 0`, the normalization `X(t) / X(train_start)` produces `inf` or `NaN`, which propagates silently through the NRMSD calculation.
-
-**Fix:**
+**Failing Test**
 ```python
-def _normalize_to_index(self, series: pd.Series, base_year: int) -> pd.Series:
-    base_val = series.loc[base_year]
-    if base_val == 0 or pd.isna(base_val):
-        # Fall back to first non-zero value within ±5 years of base_year
-        window = series.loc[base_year - 5 : base_year + 5]
-        nonzero = window[window > 0]
-        if nonzero.empty:
-            raise DataBridgeError(
-                f"Cannot normalize: no non-zero base value near {base_year}"
-            )
-        base_val = nonzero.iloc[0]
-        logger.warning(
-            "Zero base value at %d; using %d instead", base_year, nonzero.index[0]
-        )
-    return series / base_val
+# tests/test_preflight_gates.py  (append)
+import pytest
+from pyworldx.calibration.initial_conditions import get_initial_conditions
+from pyworldx.calibration.metrics import CrossValidationConfig
+
+def test_initial_conditions_default_year_is_train_start():
+    ic = get_initial_conditions()
+    assert ic["year"] == CrossValidationConfig.train_start, (
+        f"Default IC year is {ic['year']}, expected {CrossValidationConfig.train_start}. "
+        "Any call without target_year must initialize at train_start."
+    )
+
+def test_initial_conditions_1970_values_are_plausible():
+    ic = get_initial_conditions()
+    assert 3e9 < ic["POP"] < 4e9,    f"POP={ic['POP']:.2e}, expect ~3.5e9 at 1970"
+    assert ic["NR"] > 1e11,           f"NR={ic['NR']:.2e}, expect ~1e12 at 1970"
+    assert 0.8 < ic["PPOLX"] < 1.2,  f"PPOLX={ic['PPOLX']:.3f}, expect ~1.0 at 1970"
+
+def test_initial_conditions_explicit_1900_still_works():
+    ic = get_initial_conditions(target_year=1900)
+    assert ic["year"] == 1900
+
+def test_initial_conditions_rejects_invalid_years():
+    with pytest.raises(ValueError):
+        get_initial_conditions(target_year=1800)
+    with pytest.raises(ValueError):
+        get_initial_conditions(target_year=2200)
+
+def test_train_start_shift_propagates_to_initial_conditions():
+    from unittest.mock import patch
+    from pyworldx.calibration import metrics, initial_conditions
+    with patch.object(metrics.CrossValidationConfig, "train_start", 1971):
+        ic = initial_conditions.get_initial_conditions()
+        assert ic["year"] == 1971
+
+def test_no_hardcoded_1970_in_source():
+    """All literal 1970 ints in pyworldx/ and data_pipeline/ must be replaced with
+    CrossValidationConfig.train_start or a config reference."""
+    import subprocess
+    result = subprocess.run(
+        ["grep", "-rn", r"\b1970\b", "pyworldx/", "data_pipeline/",
+         "--include=*.py", "--exclude-dir=__pycache__"],
+        capture_output=True, text=True
+    )
+    hits = [
+        line for line in result.stdout.splitlines()
+        if not line.strip().startswith("#")
+        and "test_preflight_gates" not in line
+        and "CrossValidationConfig" not in line  # config definition itself is allowed
+    ]
+    assert hits == [], (
+        "Literal 1970 integers found in source — replace with "
+        "CrossValidationConfig.train_start:\n" + "\n".join(hits)
+    )
+
+def test_cross_validation_config_ordering():
+    """train_start < train_end < validation_end must hold."""
+    cfg = CrossValidationConfig()
+    assert cfg.train_start < cfg.train_end < cfg.validation_end, (
+        f"CrossValidationConfig ordering violated: "
+        f"train_start={cfg.train_start}, train_end={cfg.train_end}, "
+        f"validation_end={cfg.validation_end}"
+    )
 ```
 
-Note: `base_year` must always be passed as `CrossValidationConfig.train_start`, never as a hardcoded integer.
+**Contract**
+- `get_initial_conditions(target_year: int = CrossValidationConfig.train_start) -> dict`
+- Raises `ValueError` if `target_year < 1900` or `target_year > 2100`.
+- Returns dict containing at minimum: `year`, `POP`, `NR`, `PPOLX`.
+- `CrossValidationConfig.__post_init__` asserts `train_start < train_end < validation_end`.
+- No literal `1970` integer in `pyworldx/` or `data_pipeline/` source files (comments excluded).
 
-**Acceptance test:** `_normalize_to_index(pd.Series({1970: 0, 1971: 3.5}), 1970)` raises `DataBridgeError` rather than returning `inf`.
+**Constraints**
+- `get_initial_conditions(target_year=1900)` must continue to work when explicitly requested.
+- Do NOT change the return type of `get_initial_conditions`.
 
----
-
-### T2-4 · Add Parquet Cache Staleness Check to `DataBridge.load_targets()`
-
-**File:** `pyworldx/data/bridge.py` (when created)  
-**Problem:** If a connector's Parquet cache is missing or older than the connector's `cache_ttl`, `DataBridge` currently hits a bare `FileNotFoundError` from pandas with no diagnostic context — making the manual verification step very slow to debug.
-
-**Fix:**
-- Before loading each Parquet file, check `Path(parquet_path).exists()`.
-- If missing: raise `DataBridgeError(f"Parquet cache missing for '{entity}'. Run: python -m data_pipeline.connectors.{connector_name}")`.
-- If present but older than `cache_ttl` days: emit `logger.warning(...)` with the file age and connector refresh command.
-
-**Acceptance test:** Deleting a Parquet file and calling `load_targets()` raises `DataBridgeError` with the connector name in the message.
-
----
-
-### T2-5 · Confirm `CrossValidationConfig.train_start` Propagates Correctly
-
-**Files:** `pyworldx/calibration/metrics.py`, `pyworldx/calibration/pipeline.py`  
-**Problem:** `CrossValidationConfig.train_start = 1970` is defined in `metrics.py` but it is not verified that all downstream consumers (`build_objective()`, `calculate_validation_score()`, `initial_conditions`) actually read from this single source of truth. If any site hardcodes `1970` as a literal int, a future config change will silently break alignment.
-
-**Fix:**
-- Grep for literal `1970` across `pyworldx/` and `data_pipeline/`.
-- Replace every instance with `CrossValidationConfig.train_start` or a passed `config` reference.
-- Add a `__post_init__` assertion to `CrossValidationConfig`: `assert self.train_start < self.train_end < self.validation_end`.
-- This includes the `base_year` argument to `_normalize_to_index()` — it must always receive `config.train_start`, never a literal integer.
-
-**Acceptance test:** Changing `CrossValidationConfig.train_start = 1971` in tests causes all window boundaries to shift by one year with no `AssertionError` and no hardcoded 1970 producing misalignment.
+**Gate**
+```bash
+pytest tests/test_preflight_gates.py -v
+pytest tests/ -x -q --tb=short
+```
 
 ---
 
-### T2-6 · Add Scenario Argument to `EmpiricalCalibrationRunner` (NEW)
+## Tier 2 — Pre-Calibration Data Quality
 
-**File:** `pyworldx/calibration/empirical.py`  
-**Problem:** `EmpiricalCalibrationRunner` has no `scenario` argument. Hardcoding `Standard Run` makes it impossible to compare calibration quality against historical policy scenarios (e.g., `Historical Emissions Policy`) without a separate runner subclass.
-
-**Fix:**
-- Add `scenario: str = "standard_run"` to `EmpiricalCalibrationRunner.__init__`.
-- Validate `scenario` against the engine's registered scenario list at initialization; raise `ValueError` with available options if unknown.
-- Pass `scenario` through to the engine run call in `build_objective()`.
-
-**Acceptance test:** Instantiating `EmpiricalCalibrationRunner(scenario="historical_emissions_policy")` runs without error. Instantiating with an unregistered scenario raises `ValueError` listing valid options.
+These issues do not crash calibration but silently degrade fit quality or produce misleading
+NRMSD scores. Fix before the first optimizer run.
 
 ---
 
-## Tier 3 — Verification Gates (Run After All Tier 1 + Tier 2 Items Are Complete)
+### T2-1 · Deterministic Source Arbitration for SC, IC, AL
 
-Execute these in order. Do not proceed to calibration until all gates pass.
+**Context**
+`service_capital`, `industrial_capital`, and `arable_land` each receive data from 2–3 connectors
+with no arbitration logic. Python dict iteration order determines the winner — non-deterministic
+across Python versions, making calibration results unreproducible.
+
+**Failing Test**
+```python
+# tests/test_map_entities.py  (append)
+import random
+
+def test_source_priority_defined_for_multi_source_entities():
+    multi = ["service_capital", "industrial_capital", "arable_land"]
+    for entity in multi:
+        assert entity in ENTITY_TO_ENGINE_MAP, f"{entity} missing from map"
+        entry = ENTITY_TO_ENGINE_MAP[entity]
+        assert "source_priority" in entry, (
+            f"{entity} has no source_priority. Multi-source entities must "
+            "define explicit priority to prevent non-deterministic arbitration."
+        )
+        assert len(entry["source_priority"]) >= 2
+
+def test_load_targets_is_deterministic(tmp_path):
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    import pandas as pd
+    aligned = tmp_path / "aligned"
+    aligned.mkdir()
+    for source in ["penn_world_table", "world_bank_capital_stock"]:
+        path = aligned / f"service_capital__{source}.parquet"
+        pd.DataFrame({"year": , "value": [1.0, 1.5]}).to_parquet(path)
+    results = []
+    for _ in range(5):
+        b = DataBridge(aligned_dir=aligned, config=CrossValidationConfig())
+        targets = b.load_targets()
+        sc = next(t for t in targets if t.variable == "SC")
+        results.append(sc.values)
+    assert all(r == results for r in results), (
+        "load_targets returned different series across calls — arbitration is non-deterministic."
+    )
+
+def test_source_selection_is_logged(tmp_path, caplog):
+    import logging, pandas as pd
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    aligned = tmp_path / "aligned"
+    aligned.mkdir()
+    pd.DataFrame({"year": , "value": [1.0]}).to_parquet(
+        aligned / "service_capital__penn_world_table.parquet"
+    )
+    b = DataBridge(aligned_dir=aligned, config=CrossValidationConfig())
+    with caplog.at_level(logging.INFO):
+        b.load_targets()
+    assert any("service_capital" in r.message and "penn_world_table" in r.message
+               for r in caplog.records), (
+        "DataBridge must log which source was selected for each entity."
+    )
+```
+
+**Contract**
+- Each multi-source entity in `ENTITY_TO_ENGINE_MAP` must define `"source_priority": [str, ...]`.
+- `DataBridge.load_targets()` implements a priority waterfall: use highest-priority source where
+  non-null; fall back in order; log selection at `INFO` level.
+- Authoritative priority order:
+
+  | Entity | Priority 1 | Priority 2 | Priority 3 |
+  |---|---|---|---|
+  | `service_capital` | `penn_world_table` | `world_bank_capital_stock` | `gapminder_gdp_per_capita` |
+  | `industrial_capital` | `penn_world_table` | `world_bank_capital_stock` | `unido` |
+  | `arable_land` | `faostat_rl` | `world_bank_land` | — |
+
+**Constraints**
+- Do NOT change `ENTITY_TO_ENGINE_MAP` for single-source entities.
+- PWT deflator step (2017 vs. 2015 base) must be applied before normalization — not silently skipped.
+
+**Gate**
+```bash
+pytest tests/test_map_entities.py::test_source_priority_defined_for_multi_source_entities -v
+pytest tests/test_map_entities.py::test_load_targets_is_deterministic -v
+```
+
+---
+
+### T2-2 · Add BP Statistical Review Connector for Nonrenewable Resources
+
+**Context**
+No continuous observed NR stock series exists in the pipeline. `world3_reference_nonrenewable_resources`
+is the only current NR input — using it as a calibration target is circular. The resource sector
+is entirely synthetic without an empirical anchor.
+
+**Failing Test**
+```python
+# tests/test_bp_connector.py
+import pytest
+from unittest.mock import patch
+import pandas as pd
+
+def test_bp_connector_exists():
+    from data_pipeline.connectors.bp_statistical_review import BPStatisticalReviewConnector
+    assert BPStatisticalReviewConnector is not None
+
+def test_bp_connector_schema():
+    from data_pipeline.connectors.bp_statistical_review import BPStatisticalReviewConnector
+    c = BPStatisticalReviewConnector()
+    with patch.object(c, "_raw_fetch") as mock:
+        mock.return_value = pd.DataFrame({
+            "year": list(range(1965, 2024)),
+            "proved_reserves_ej": [500.0 + i * 5 for i in range(59)],
+        })
+        df = c.fetch()
+    assert "year" in df.columns
+    assert "proved_reserves_ej" in df.columns
+    assert df["year"].min() <= 1970
+    assert df["year"].max() >= 2020
+
+def test_bp_connector_no_gap_over_three_years():
+    from data_pipeline.connectors.bp_statistical_review import BPStatisticalReviewConnector
+    c = BPStatisticalReviewConnector()
+    with patch.object(c, "_raw_fetch") as mock:
+        years = list(range(1965, 2024))
+        mock.return_value = pd.DataFrame({
+            "year": years,
+            "proved_reserves_ej": [500.0] * len(years),
+        })
+        df = c.fetch()
+    year_set = set(df["year"])
+    for y in range(1965, 2021):
+        gap = sum(1 for d in range(4) if (y + d) not in year_set)
+        assert gap < 4, f"Gap >3 years starting at {y}"
+
+def test_bp_connector_tagged_layer_1():
+    from data_pipeline.connectors.bp_statistical_review import BPStatisticalReviewConnector
+    assert BPStatisticalReviewConnector.layer == 1, (
+        "BP proved reserves is an observed proxy (Layer 1), not a structural reference (Layer 0)."
+    )
+
+def test_world3_nr_reference_not_in_engine_map():
+    assert "world3_reference_nonrenewable_resources" not in ENTITY_TO_ENGINE_MAP
+    assert "world3.nr_fraction" in WORLD3_NAMESPACE
+```
+
+**Contract**
+```python
+class BPStatisticalReviewConnector:
+    entity: str = "nonrenewable_resources_proved_reserves"
+    unit: str = "EJ"
+    layer: int = 1
+    source_url: str   # OWID/BP mirror URL — must be a named attribute
+
+    def fetch(self) -> pd.DataFrame:
+        """Columns: year (int), proved_reserves_ej (float). Covers 1965–2023."""
+
+    def _raw_fetch(self) -> pd.DataFrame:
+        """Injectable for testing."""
+```
+- Output entity key: `nonrenewable_resources_proved_reserves`.
+- `world3_reference_nonrenewable_resources` → `WORLD3_NAMESPACE["world3.nr_fraction"]`.
+  Absent from `ENTITY_TO_ENGINE_MAP`.
+- Conversion note: `EJ → World3 NR units` (scalar calibrated against 1970 World3-03 NR ≈ 1.0×10¹²)
+  applied in `DataBridge`, not in the connector.
+
+**Constraints**
+- Do NOT alter any existing connector.
+- Do NOT include `world3.nr_fraction` in `ENTITY_TO_ENGINE_MAP` at any weight.
+
+**Gate**
+```bash
+pytest tests/test_bp_connector.py -v
+pytest tests/test_map_entities.py::test_world3_nr_reference_not_in_engine_map -v
+```
+
+---
+
+### T2-3 · Zero-Guard in `DataBridge._normalize_to_index()`
+
+**Context**
+Several USGS and early World Bank series have zero-padded years before 1960. If
+`X(train_start) = 0`, the normalization `X(t) / X(train_start)` produces `inf` or `NaN`,
+which propagates silently through the NRMSD calculation with no error.
+
+**Failing Test**
+```python
+# tests/test_databridge.py
+import pytest
+import pandas as pd
+from pyworldx.data.bridge import DataBridge, DataBridgeError
+from pyworldx.calibration.metrics import CrossValidationConfig
+
+@pytest.fixture
+def bridge(tmp_path):
+    return DataBridge(aligned_dir=tmp_path, config=CrossValidationConfig())
+
+def test_normalize_divides_by_base_year(bridge):
+    s = pd.Series({1968: 2.0, 1970: 4.0, 1975: 8.0})
+    result = bridge._normalize_to_index(s, base_year=1970)
+    assert result == pytest.approx(1.0)
+    assert result == pytest.approx(2.0)
+    assert result == pytest.approx(0.5)
+
+def test_normalize_zero_base_falls_back_to_nearby_nonzero(bridge):
+    s = pd.Series({1969: 0.0, 1970: 0.0, 1971: 3.5, 1975: 7.0})
+    result = bridge._normalize_to_index(s, base_year=1970)
+    assert result == pytest.approx(1.0)
+    assert result == pytest.approx(2.0)
+
+def test_normalize_no_nonzero_raises_databridge_error(bridge):
+    s = pd.Series({1965: 0.0, 1970: 0.0, 1975: 0.0})
+    with pytest.raises(DataBridgeError, match="no non-zero base value"):
+        bridge._normalize_to_index(s, base_year=1970)
+
+def test_normalize_result_contains_no_inf_or_nan(bridge):
+    import numpy as np
+    s = pd.Series({1970: 1.0, 1980: 2.0, 1990: 0.0})  # zero mid-series is fine
+    result = bridge._normalize_to_index(s, base_year=1970)
+    assert not result.isin([np.inf, -np.inf]).any()
+
+def test_normalize_base_year_is_config_train_start(bridge):
+    """Callers must pass config.train_start — never a literal int."""
+    s = pd.Series({CrossValidationConfig.train_start: 1.0, 1980: 2.0})
+    # Must not raise
+    bridge._normalize_to_index(s, base_year=CrossValidationConfig.train_start)
+```
+
+**Contract**
+```python
+def _normalize_to_index(self, series: pd.Series, base_year: int) -> pd.Series:
+    """
+    Returns series / series[base_year].
+    - If series[base_year] is 0 or NaN, falls back to first non-zero value
+      within ±5 years of base_year, emitting a WARNING log.
+    - Raises DataBridgeError("no non-zero base value near {base_year}")
+      if no fallback exists.
+    - Result must contain no inf or NaN values introduced by the normalization itself.
+    - base_year must always be CrossValidationConfig.train_start at every internal call site.
+    """
+```
+
+**Constraints**
+- Do NOT apply any unit conversions inside `_normalize_to_index` — it must be unit-agnostic.
+- The fallback window is exactly ±5 years — not configurable without a separate PR.
+
+**Gate**
+```bash
+pytest tests/test_databridge.py -v
+```
+
+---
+
+### T2-4 · `DataBridge.load_targets()` Parquet Cache Staleness Check
+
+**Context**
+If a connector's Parquet cache is missing, `DataBridge` currently raises a bare pandas
+`FileNotFoundError` with no diagnostic context, making the manual verification step slow to
+debug.
+
+**Failing Test**
+```python
+# tests/test_databridge.py  (append)
+
+def test_load_targets_raises_databridge_error_when_parquet_missing(bridge):
+    with pytest.raises(DataBridgeError, match="Parquet cache missing"):
+        bridge.load_targets()
+
+def test_load_targets_error_names_the_connector(tmp_path):
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    b = DataBridge(aligned_dir=tmp_path, config=CrossValidationConfig())
+    try:
+        b.load_targets()
+    except DataBridgeError as e:
+        assert "python -m data_pipeline" in str(e), (
+            "DataBridgeError must include the command to regenerate the cache."
+        )
+
+def test_load_targets_warns_on_stale_cache(tmp_path, caplog):
+    import logging, pandas as pd, time, pathlib
+    from pyworldx.data.bridge import DataBridge
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    aligned = tmp_path / "aligned"
+    aligned.mkdir()
+    # Create a parquet that is artificially old
+    p = aligned / "population__un_wpp.parquet"
+    pd.DataFrame({"year": , "value": [3.5e9]}).to_parquet(p)
+    # Back-date modification time by 40 days
+    old_time = time.time() - (40 * 86400)
+    import os
+    os.utime(p, (old_time, old_time))
+    b = DataBridge(aligned_dir=aligned, config=CrossValidationConfig())
+    with caplog.at_level(logging.WARNING):
+        try:
+            b.load_targets()
+        except DataBridgeError:
+            pass  # other caches missing; we only care about the stale warning
+    assert any("stale" in r.message.lower() or "days old" in r.message.lower()
+               for r in caplog.records), (
+        "DataBridge must warn when a cached Parquet file is older than cache_ttl days."
+    )
+```
+
+**Contract**
+- Before loading each Parquet, check `Path(parquet_path).exists()`.
+- Missing → raise `DataBridgeError(f"Parquet cache missing for '{entity}'. "
+  f"Run: python -m data_pipeline.connectors.{connector_name}")`.
+- Present but older than `cache_ttl` (default: 30 days) → emit `logger.warning(...)` with
+  file age in days and the connector refresh command.
+- `cache_ttl` must be a named class attribute on `DataBridge`, not a magic number.
+
+**Constraints**
+- Do NOT raise on stale cache — warn only; caller decides whether to abort.
+- Do NOT change any connector's fetch logic.
+
+**Gate**
+```bash
+pytest tests/test_databridge.py::test_load_targets_raises_databridge_error_when_parquet_missing -v
+pytest tests/test_databridge.py::test_load_targets_error_names_the_connector -v
+pytest tests/test_databridge.py::test_load_targets_warns_on_stale_cache -v
+```
+
+---
+
+### T2-5 · `CrossValidationConfig.train_start` Propagation Audit
+
+**Context**
+`CrossValidationConfig.train_start = 1970` is defined in `metrics.py` but not verified to
+propagate to all downstream consumers. Hardcoded literal `1970` integers exist throughout
+`pyworldx/` and `data_pipeline/`. A future config change will silently break window alignment
+without raising any error.
+
+**Failing Test**
+```python
+# tests/test_preflight_gates.py  (append)
+
+def test_config_ordering_invariant_holds():
+    from pyworldx.calibration.metrics import CrossValidationConfig
+    cfg = CrossValidationConfig()
+    assert cfg.train_start < cfg.train_end, (
+        f"train_start={cfg.train_start} must be < train_end={cfg.train_end}"
+    )
+    assert cfg.train_end < cfg.validation_end, (
+        f"train_end={cfg.train_end} must be < validation_end={cfg.validation_end}"
+    )
+
+def test_train_start_shift_propagates_to_initial_conditions():
+    """Changing train_start must shift the IC default year automatically."""
+    from pyworldx.calibration import metrics, initial_conditions
+    original = metrics.CrossValidationConfig.train_start
+    try:
+        metrics.CrossValidationConfig.train_start = 1971
+        ic = initial_conditions.get_initial_conditions()
+        assert ic["year"] == 1971, (
+            "get_initial_conditions() default year did not shift with train_start. "
+            "It must read CrossValidationConfig.train_start dynamically."
+        )
+    finally:
+        metrics.CrossValidationConfig.train_start = original
+
+def test_no_hardcoded_1970_in_source():
+    import subprocess
+    result = subprocess.run(
+        ["grep", "-rn", r"\b1970\b", "pyworldx/", "data_pipeline/",
+         "--include=*.py", "--exclude-dir=__pycache__"],
+        capture_output=True, text=True
+    )
+    hits = [
+        line for line in result.stdout.splitlines()
+        if not line.strip().startswith("#")
+        and "test_preflight_gates" not in line
+        and "CrossValidationConfig" not in line
+    ]
+    assert hits == [], (
+        "Literal 1970 integers in source — replace with CrossValidationConfig.train_start:\n"
+        + "\n".join(hits)
+    )
+```
+
+**Contract**
+- `CrossValidationConfig.__post_init__` asserts `train_start < train_end < validation_end`.
+- `get_initial_conditions()` reads `CrossValidationConfig.train_start` dynamically at call time,
+  not at import time.
+- Zero literal `1970` integers remain in `pyworldx/` or `data_pipeline/` source files
+  (excluding comments and the config class definition itself).
+
+**Constraints**
+- Existing behavior of all functions that explicitly pass `target_year=1970` must not change.
+- Do NOT change `CrossValidationConfig.train_start` value — this is an audit-only ticket.
+
+**Gate**
+```bash
+pytest tests/test_preflight_gates.py::test_config_ordering_invariant_holds -v
+pytest tests/test_preflight_gates.py::test_train_start_shift_propagates_to_initial_conditions -v
+pytest tests/test_preflight_gates.py::test_no_hardcoded_1970_in_source -v
+pytest tests/ -x -q --tb=short
+```
+
+---
+
+## Verification Gates
+
+Run in order after all Tier 1 and Tier 2 tickets are GREEN.
 
 ### Gate 1 — Unit Audit
 ```bash
 python -m pyworldx.data.bridge --audit-units
 ```
-Expected: zero `UNIT_MISMATCH` entries in output. Any remaining mismatches must be resolved or explicitly tagged `excluded_from_objective=True` with a documented reason.
+Expected: zero `UNIT_MISMATCH` entries. Any remaining mismatches must be tagged
+`excluded_from_objective=True` with a documented reason before proceeding.
 
 ### Gate 2 — Initial Conditions Smoke Test
 ```bash
 python -c "
 from pyworldx.calibration.initial_conditions import get_initial_conditions
+from pyworldx.calibration.metrics import CrossValidationConfig
 ic = get_initial_conditions()
-assert ic['year'] == 1970
+assert ic['year'] == CrossValidationConfig.train_start
 print('IC year:', ic['year'])
-print('POP:', ic['POP'])   # expect ~3.5e9
-print('NR:', ic['NR'])     # expect ~1.0e12
-print('PPOLX:', ic['PPOLX'])  # expect ~1.0
+print('POP:', ic['POP'])    # expect ~3.5e9
+print('NR:', ic['NR'])      # expect ~1e12
+print('PPOLX:', ic['PPOLX']) # expect ~1.0
 "
 ```
 
@@ -241,21 +767,24 @@ print('PPOLX:', ic['PPOLX'])  # expect ~1.0
 ```bash
 python -m pyworldx.data.bridge --report-coverage --aligned-dir ./output/aligned
 ```
-Expected output columns: `entity | source | years_covered | gap_count | base_year_value | base_year_nonzero`. Any entity with `base_year_nonzero=False` is a T1/T2 blocker that must be resolved before calibration.
+Expected columns: `entity | source | years_covered | gap_count | base_year_value |
+base_year_nonzero`. Any `base_year_nonzero=False` row is an unresolved blocker.
 
 ### Gate 4 — Full Test Suite
 ```bash
 pytest tests/ -x -q --tb=short
 ```
-Expected: all tests pass. Zero `XFAIL` items that were passing before. Pay particular attention to `test_databridge.py` and `test_empirical_calibration.py`.
-
-**Note on `test_empirical_calibration.py`:** Assert that `overfit_flagged` triggers only when `validation_nrmsd - train_nrmsd > CrossValidationConfig.overfit_threshold` — **not** as a hard failure for any `validation_nrmsd > train_nrmsd`. Mild degradation from train to validation window is expected and healthy. Mock data that accidentally produces `validation_nrmsd < train_nrmsd` should not fail the test.
+Expected: all tests pass. Zero `XFAIL` items that were passing before.
 
 ### Gate 5 — End-to-End Dry Run
 ```bash
-python -m pyworldx.calibration.empirical --dry-run --train-window 1970-2010 --holdout-window 2010-2023
+python -m pyworldx.calibration.empirical \
+  --dry-run \
+  --train-window 1970-2010 \
+  --holdout-window 2010-2023
 ```
-Expected: run completes without `UnitMismatchError`, `DataBridgeError`, or `NaN` in reported NRMSD. The `--dry-run` flag skips the Nelder-Mead optimizer and reports data coverage only.
+Expected: completes without `UnitMismatchError`, `DataBridgeError`, or `NaN` in reported NRMSD.
+`--dry-run` skips the optimizer and reports data coverage only.
 
 ---
 
@@ -263,19 +792,17 @@ Expected: run completes without `UnitMismatchError`, `DataBridgeError`, or `NaN`
 
 | # | Decision | Options | Status |
 |---|---|---|---|
-| 1 | Scenario for empirical calibration | `Standard Run` only vs. accept `scenario` arg | **Resolved: accept `scenario` arg, default `"standard_run"`** — enables comparison against `Historical Emissions Policy` without a separate runner subclass. See T2-6. |
-| 2 | NR proxy layer weighting | BP reserves as sole Layer 1 vs. blend with WEO data | Unresolved — defer to post-preflight. BP reserves is required minimum; WEO blend is optional enhancement. |
-| 3 | World3ReferenceConnector scope | Layer 0 (structural only, excluded from objective) vs. Layer 1 (included with low weight) | **Resolved: Layer 0 only** — including World3 reference trajectories as calibration targets is circular. All `world3_reference_*` mappings must be namespaced and excluded from `ENTITY_TO_ENGINE_MAP`. See calibration plan §0.4 and preflight audit §2.2. |
+| 1 | Scenario for empirical calibration | `Standard Run` only vs. accept `scenario` arg | **Recommended: accept arg, default `standard_run`** |
+| 2 | NR proxy layer weighting | BP reserves as sole Layer 1 vs. blend with WEO data | Unresolved — defer to post-preflight |
+| 3 | `World3ReferenceConnector` scope | Layer 0 (structural only, excluded from objective) vs. Layer 1 | **Recommended: Layer 0 only** |
 
 ---
 
 ## Completion Criteria
 
-This preflight plan is complete when:
-- [ ] All 4 Tier 1 blockers resolved and committed
-- [ ] All 6 Tier 2 issues resolved and committed (including new T2-6)
-- [ ] All 5 Gates pass in a clean `pytest` + dry-run run
+This plan is complete when:
+- [ ] All 4 Tier 1 tickets GREEN and committed
+- [ ] All 5 Tier 2 tickets GREEN and committed
+- [ ] All 5 Verification Gates pass in a clean environment
 - [ ] `plans/implementation_audit_report.md` updated with resolved status for each finding
 - [ ] PR description references this file: `plans/2026-04-18-preflight-plan.md`
-- [ ] No literal `1970` integers remain in `pyworldx/` or `data_pipeline/` (all replaced with `CrossValidationConfig.train_start`)
-- [ ] All `world3_reference_*` mappings namespaced to `world3.*` and excluded from `ENTITY_TO_ENGINE_MAP`
