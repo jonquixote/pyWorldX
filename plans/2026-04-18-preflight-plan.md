@@ -1,6 +1,6 @@
 # Pre-Flight Remediation Plan — TDD Edition
 
-**Branch:** `phase-2-remediation`
+**Branch:** `phase-2-calibration`
 **Date:** 2026-04-18
 **Workflow:** Write the failing test (RED) → implement to the Contract → confirm the Gate (GREEN).
 **Rule:** No ticket is "done" until its specific Gate command passes AND the unit test suite (`pytest tests/unit/ -x -q`) stays green.

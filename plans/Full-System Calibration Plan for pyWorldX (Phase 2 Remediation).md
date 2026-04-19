@@ -1,5 +1,6 @@
 # Full-System Calibration Plan for pyWorldX (Phase 2 Remediation)
 
+**Branch:** `phase-2-calibration`
 **Format:** Every task is a self-contained TDD ticket.
 **Workflow:** Write the failing test (RED) → implement to the contract → confirm the gate (GREEN).
 **Rule:** No task is "done" until its specific gate command passes AND the unit test suite (`pytest tests/unit/ -x -q`) stays green.
