@@ -15,11 +15,14 @@ Flows:  births, deaths (d1-d4), maturation (mat1-mat3)
   mat_i  = P_i * (1 - M_i) / cohort_span
   d_i    = P_i * M_i
 
-  LE = LEN * LMF * LMHS * LMP * LMC
+  LE = effective_len * LMF * LMHS * LMP * LMC
   TF = min(MTF, MTF*(1-FCE) + DTF*FCE)
   DTF = DCFS * CMPLE
   DCFS = DCFSN * FRSN * SFSN   (or 2.0 after ZPGT)
-  MTF = MTFN * FM
+  MTF = effective_mtfn * FM
+
+  effective_len  = _LEN  * len_scale   (calibration lever, default 1.0)
+  effective_mtfn = _MTFN * mtfn_scale  (calibration lever, default 1.0)
 
 All table functions match the canonical pyworld3 reference implementation
 (cvanwynsberghe/pyworld3), which is a faithful translation of wrld3-03.mdl.
@@ -103,14 +106,14 @@ _FSAFC_Y = (0.0, 0.005, 0.015, 0.025, 0.03, 0.035)
 
 # ── W3-03 constants ───────────────────────────────────────────────────
 
-_LEN = 28.0          # normal life expectancy (years)
+_LEN = 28.0          # normal life expectancy (years)      ← scaled by len_scale
 _IPHST = 1940        # implementation of health service time (calendar year)
 _P1I = 6.5e8         # initial P1 (0-14) in 1900
 _P2I = 7.0e8         # initial P2 (15-44) in 1900
 _P3I = 1.9e8         # initial P3 (45-64) in 1900
 _P4I = 6.0e7         # initial P4 (65+) in 1900
 _SFPC = 230.0        # subsistence food per capita
-_MTFN = 12.0         # maximum total fertility normal
+_MTFN = 12.0         # maximum total fertility normal      ← scaled by mtfn_scale
 _DCFSN = 4.0         # desired completed family size normal
 _RLT = 30.0          # reproductive lifetime (years)
 _ZPGT = 4000         # zero population growth time (inactive in base run)
@@ -127,9 +130,22 @@ class PopulationSector:
 
     Stocks: P1, P2, P3, P4 (age cohorts)
     Reads:  food_per_capita, industrial_output, pollution_index,
-            service_output_per_capita
+            service_output_per_capita, len_scale, mtfn_scale
     Writes: POP, P1, P2, P3, P4, birth_rate, death_rate,
             life_expectancy, industrial_output_per_capita
+
+    Calibration levers
+    ------------------
+    len_scale (default 1.0):
+        Scales _LEN (normal life expectancy = 28 yr) before it enters the
+        life-expectancy chain.  effective_len = _LEN * len_scale.
+        The full LMF/LMHS/LMP/LMC multiplier chain is preserved — the
+        optimizer only shifts the baseline.
+
+    mtfn_scale (default 1.0):
+        Scales _MTFN (max total fertility normal = 12) before it enters
+        the fertility chain.  effective_mtfn = _MTFN * mtfn_scale.
+        The full FM/FCE/DCFS feedback chain is preserved.
     """
 
     name = "population"
@@ -139,7 +155,7 @@ class PopulationSector:
     # Parameters (overridable for presets)
     initial_population: float = _P1I + _P2I + _P3I + _P4I  # backward compat
 
-    # Internal smooth states are now managed as integrated stocks 
+    # Internal smooth states are now managed as integrated stocks
     # to be compatible with RK4 integration inside the engine.
 
     def init_stocks(self, ctx: RunContext) -> dict[str, Quantity]:
@@ -149,7 +165,7 @@ class PopulationSector:
         spc0 = 87.0               # Roughly 1900 service output per capita
         hsapc0 = table_lookup(spc0, _HSAPC_X, _HSAPC_Y)
         fcapc0 = 0.0              # Starts at 0
-        
+
         return {
             "P1": Quantity(_P1I, "persons"),
             "P2": Quantity(_P2I, "persons"),
@@ -175,13 +191,25 @@ class PopulationSector:
         p3 = stocks["P3"].magnitude
         p4 = stocks["P4"].magnitude
         pop = p1 + p2 + p3 + p4
-        
+
         # Extract smooth state stocks
         ple = stocks["PLE"].magnitude
         ehspc = stocks["EHSPC"].magnitude
         aiopc = stocks["AIOPC"].magnitude
         diopc = stocks["DIOPC"].magnitude
         fcfpc = stocks["FCFPC"].magnitude
+
+        # ── Calibration levers ────────────────────────────────────────
+        # Both default to 1.0 → canonical W3-03 behaviour when not set.
+        len_scale = inputs.get(
+            "len_scale", Quantity(1.0, "dimensionless")
+        ).magnitude
+        mtfn_scale = inputs.get(
+            "mtfn_scale", Quantity(1.0, "dimensionless")
+        ).magnitude
+
+        effective_len  = _LEN  * max(len_scale,  1e-6)
+        effective_mtfn = _MTFN * max(mtfn_scale, 1e-6)
 
         # Read inputs with defaults
         fpc = inputs.get(
@@ -236,8 +264,8 @@ class PopulationSector:
         ).magnitude
         gini_mort = max(0.0, min(gini_mort, 1.0))
 
-        # Life expectancy
-        life_expectancy = _LEN * lmf * lmhs * lmp * lmc * toxin_health * gini_mort
+        # Life expectancy — uses effective_len instead of bare _LEN
+        life_expectancy = effective_len * lmf * lmhs * lmp * lmc * toxin_health * gini_mort
         life_expectancy = max(life_expectancy, 1.0)
 
         # ── Age-specific mortality ────────────────────────────────────
@@ -294,8 +322,8 @@ class PopulationSector:
         ).magnitude
         toxin_fertility = max(0.0, min(toxin_fertility, 1.0))
 
-        # MTF: maximum total fertility (reduced by toxin exposure)
-        mtf = _MTFN * fm * toxin_fertility
+        # MTF: maximum total fertility — uses effective_mtfn instead of bare _MTFN
+        mtf = effective_mtfn * fm * toxin_fertility
 
         # Average IOPC (SMOOTH with IEAT)
         d_aiopc = (iopc - aiopc) / max(_IEAT, 1e-6)
@@ -395,6 +423,9 @@ class PopulationSector:
             "disease_death_rate",
             "gini_mortality_mult",
             "total_migration_flow",
+            # Calibration levers — wired by EmpiricalCalibrationRunner
+            "len_scale",
+            "mtfn_scale",
         ]
 
     def declares_writes(self) -> list[str]:
@@ -424,7 +455,7 @@ class PopulationSector:
                 "DLINF3 delays simplified to 1st-order smooth",
                 "LMC crowding multiplier included",
             ],
-            "free_parameters": ["initial_population"],
+            "free_parameters": ["initial_population", "len_scale", "mtfn_scale"],
             "conservation_groups": ["population_mass"],
             "observables": [
                 "POP",
