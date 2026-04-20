@@ -69,8 +69,10 @@ _K_OD = 0.005       # Deep mixing rate (per yr)
 # Land carbon cycle
 _NPP0 = 60.0        # Pre-industrial NPP (GtC/yr, global photosynthesis)
 _BETA_CO2 = 0.4     # CO2 fertilization sensitivity (β)
-_K_LITTER = 0.035   # Litter fall rate (per yr)
-_K_RESP_PLANT = 0.03  # Plant respiration rate (per yr)
+_K_LITTER = 0.05   # Litter fall rate (per yr) — calibrated so that
+                   # (_K_RESP_PLANT + _K_LITTER) × C_LAND0 = NPP0 = 60 GtC/yr
+_K_RESP_PLANT = 0.05  # Plant respiration rate (per yr) — calibrated so that
+                      # (_K_RESP_PLANT + _K_LITTER) × C_LAND0 = NPP0 = 60 GtC/yr
 _K_RESP_SOIL0 = 0.02  # Base soil respiration rate (per yr)
 
 # Gaian feedback (Q84)
