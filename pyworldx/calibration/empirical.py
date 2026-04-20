@@ -385,3 +385,244 @@ class EmpiricalCalibrationRunner:
         targets = self.load_targets(weights)
         trajectories, time_index = engine_factory(params)
         return self.bridge.compare(targets, trajectories, time_index)
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import logging
+    import sys
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    _log = logging.getLogger("empirical.cli")
+
+    parser = argparse.ArgumentParser(
+        prog="python -m pyworldx.calibration.empirical",
+        description="Run empirical calibration for one sector of the World3 engine.",
+    )
+    parser.add_argument(
+        "--sector",
+        required=True,
+        help="Sector to calibrate (e.g. population, agriculture, resources).",
+    )
+    parser.add_argument(
+        "--params",
+        required=False,
+        default="",
+        help="Comma-separated list of parameter names to tune (e.g. population.len_scale,population.mtfn_scale). "
+             "If omitted, all parameters registered for the sector are used.",
+    )
+    parser.add_argument(
+        "--train-window",
+        required=False,
+        default=f"{CrossValidationConfig.train_start}-{CrossValidationConfig.train_end}",
+        metavar="YYYY-YYYY",
+        help=f"Training window as START-END (default: "
+             f"{CrossValidationConfig.train_start}-{CrossValidationConfig.train_end}).",
+    )
+    parser.add_argument(
+        "--holdout-window",
+        required=False,
+        default=None,
+        metavar="YYYY-YYYY",
+        help="Holdout/validation window as START-END. "
+             "If omitted, no validation score is computed.",
+    )
+    parser.add_argument(
+        "--nrmsd-target",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help="Exit with code 1 if final composite NRMSD exceeds this threshold.",
+    )
+    parser.add_argument(
+        "--aligned-dir",
+        default="output/aligned",
+        metavar="PATH",
+        help="Path to the aligned Parquet store (default: output/aligned).",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Write calibrated parameters as JSON to this path.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Skip the optimizer. Load targets, report data coverage, and exit.",
+    )
+    parser.add_argument(
+        "--morris-trajectories",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Morris screening trajectories (default: 10).",
+    )
+    parser.add_argument(
+        "--sobol-samples",
+        type=int,
+        default=256,
+        metavar="N",
+        help="Sobol analysis base samples (default: 256).",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed (default: 42).",
+    )
+
+    args = parser.parse_args()
+
+    # ── Parse windows ────────────────────────────────────────────────
+    def _parse_window(s: str, label: str) -> tuple[int, int]:
+        parts = s.split("-")
+        if len(parts) != 2:
+            parser.error(f"--{label} must be YYYY-YYYY, got: {s!r}")
+        try:
+            return int(parts[0]), int(parts[1])
+        except ValueError:
+            parser.error(f"--{label} years must be integers, got: {s!r}")
+
+    train_start, train_end = _parse_window(args.train_window, "train-window")
+
+    validate_start: Optional[int] = None
+    validate_end: Optional[int] = None
+    if args.holdout_window:
+        validate_start, validate_end = _parse_window(args.holdout_window, "holdout-window")
+
+    # ── Build CrossValidationConfig ──────────────────────────────────
+    cfg = CrossValidationConfig(
+        train_start=train_start,
+        train_end=train_end,
+        validate_start=validate_start or train_end,
+        validate_end=validate_end or train_end,
+    )
+
+    # ── Build runner ─────────────────────────────────────────────────
+    aligned_dir = Path(args.aligned_dir)
+    runner = EmpiricalCalibrationRunner(aligned_dir=aligned_dir)
+
+    # ── Load targets ─────────────────────────────────────────────────
+    _log.info("Loading empirical targets from %s …", aligned_dir)
+    try:
+        targets = runner.load_targets()
+    except Exception as exc:
+        _log.error("Failed to load targets: %s", exc)
+        sys.exit(1)
+
+    _log.info("Loaded %d calibration target(s).", len(targets))
+
+    if not targets:
+        _log.error(
+            "No calibration targets loaded. "
+            "Run: python -m data_pipeline --align  then retry."
+        )
+        sys.exit(1)
+
+    # ── Coverage report (always printed) ────────────────────────────
+    print("\n── Data Coverage ───────────────────────────────────────────")
+    for t in sorted(targets, key=lambda x: x.variable_name):
+        print(
+            f"  {t.variable_name:<35s}  "
+            f"{int(t.years[0])}-{int(t.years[-1])}  "
+            f"({len(t.years)} pts)  "
+            f"source={t.source}"
+        )
+    print()
+
+    if args.dry_run:
+        _log.info("--dry-run: skipping optimizer. Exiting.")
+        sys.exit(0)
+
+    # ── Build ParameterRegistry scoped to requested params ───────────
+    try:
+        from pyworldx.calibration.parameters import ParameterRegistry
+        registry = ParameterRegistry.for_sector(args.sector)
+    except Exception as exc:
+        _log.error("Could not build ParameterRegistry for sector %r: %s", args.sector, exc)
+        sys.exit(1)
+
+    if args.params:
+        requested = [p.strip() for p in args.params.split(",") if p.strip()]
+        try:
+            registry = registry.subset(requested)
+        except Exception as exc:
+            _log.error("Could not subset registry to params %s: %s", requested, exc)
+            sys.exit(1)
+
+    _log.info(
+        "Calibrating %d parameter(s) in sector %r over train window %d-%d …",
+        len(registry),
+        args.sector,
+        train_start,
+        train_end,
+    )
+
+    # ── Engine factory (sector-scoped) ───────────────────────────────
+    try:
+        from pyworldx.engine import build_sector_engine_factory
+        engine_factory = build_sector_engine_factory(args.sector)
+    except Exception as exc:
+        _log.error("Could not build engine factory for sector %r: %s", args.sector, exc)
+        sys.exit(1)
+
+    # ── Run calibration ──────────────────────────────────────────────
+    report = runner.run(
+        registry=registry,
+        engine_factory=engine_factory,
+        cross_val_config=cfg,
+        morris_trajectories=args.morris_trajectories,
+        sobol_samples=args.sobol_samples,
+        seed=args.seed,
+    )
+
+    # ── Print results ────────────────────────────────────────────────
+    print("── Calibration Results ─────────────────────────────────────")
+    print(f"  Converged:          {report.converged}")
+    print(f"  Total evaluations:  {report.total_evaluations}")
+
+    if report.empirical_result:
+        print(f"  Train NRMSD:        {report.empirical_result.composite_nrmsd:.4f}")
+        for var, nrmsd in sorted(report.empirical_result.per_variable_nrmsd.items()):
+            print(f"    {var:<33s}  {nrmsd:.4f}")
+
+    if report.validation_nrmsd is not None:
+        print(f"  Holdout NRMSD:      {report.validation_nrmsd:.4f}")
+        if report.overfit_flagged:
+            print("  ⚠  Overfit flagged — validation NRMSD degraded beyond threshold.")
+
+    if report.calibrated_parameters:
+        print("\n── Calibrated Parameters ───────────────────────────────────")
+        for k, v in sorted(report.calibrated_parameters.items()):
+            print(f"  {k:<40s}  {v:.6g}")
+
+    # ── Write output JSON ────────────────────────────────────────────
+    if args.output and report.calibrated_parameters:
+        out_path = Path(args.output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as fh:
+            json.dump(report.calibrated_parameters, fh, indent=2)
+        _log.info("Calibrated parameters written to %s", out_path)
+
+    # ── NRMSD gate ───────────────────────────────────────────────────
+    if args.nrmsd_target is not None and report.empirical_result is not None:
+        final_nrmsd = report.empirical_result.composite_nrmsd
+        if final_nrmsd > args.nrmsd_target:
+            _log.error(
+                "NRMSD gate FAILED: composite NRMSD %.4f > target %.4f",
+                final_nrmsd,
+                args.nrmsd_target,
+            )
+            sys.exit(1)
+        else:
+            _log.info(
+                "NRMSD gate PASSED: composite NRMSD %.4f <= target %.4f",
+                final_nrmsd,
+                args.nrmsd_target,
+            )
