@@ -57,19 +57,21 @@ def test_normalize_base_year_is_config_train_start(bridge):
 # ── T2-4: Parquet cache staleness check ──────────────────────────────
 
 
-def test_load_targets_raises_databridge_error_when_parquet_missing(bridge):
-    with pytest.raises(DataBridgeError, match="Parquet cache missing"):
+def test_load_targets_warns_when_parquet_missing(bridge, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="pyworldx.data.bridge"):
         bridge.load_targets()
+    assert "no direct Parquet file" in caplog.text
 
 
-def test_load_targets_error_names_the_connector(tmp_path):
+def test_load_targets_warning_names_the_pipeline_command(tmp_path, caplog):
+    import logging
     b = DataBridge(aligned_dir=tmp_path, config=CrossValidationConfig())
-    try:
+    with caplog.at_level(logging.WARNING, logger="pyworldx.data.bridge"):
         b.load_targets()
-    except DataBridgeError as e:
-        assert "python -m data_pipeline" in str(e), (
-            "DataBridgeError must include the command to regenerate the cache."
-        )
+    assert "python -m data_pipeline run" in caplog.text, (
+        "Warning must include the command to regenerate the cache."
+    )
 
 
 def test_load_targets_warns_on_stale_cache(tmp_path, caplog):

@@ -411,11 +411,13 @@ class DataBridge:
                     )
 
         if missing_entities:
-            first = missing_entities[0]
-            connector_name = first.replace(".", "_")
-            raise DataBridgeError(
-                f"Parquet cache missing for '{first}'. "
-                f"Run: python -m data_pipeline.connectors.{connector_name}"
+            logger.warning(
+                "DataBridge: %d entity/entities have no direct Parquet file: %s. "
+                "These will be skipped unless covered by source_priority waterfall. "
+                "Run: python -m data_pipeline run",
+                len(missing_entities),
+                ", ".join(missing_entities[:5])
+                + ("..." if len(missing_entities) > 5 else ""),
             )
 
         if read_aligned is None:
