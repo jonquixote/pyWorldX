@@ -292,7 +292,7 @@ class TestDataBridgeLoadTargets:
         })
         df.to_parquet(aligned / "population_total.parquet")
 
-        bridge = DataBridge(entity_map={"population.total": "POP"})
+        bridge = DataBridge(entity_map={"population.total": {"engine_var": "POP", "unit": "persons", "nrmsd_method": "direct"}})
         targets = bridge.load_targets(aligned, sector="population")
         pop_targets = [t for t in targets if t.variable_name == "POP"]
         assert len(pop_targets) == 1
@@ -310,7 +310,7 @@ class TestDataBridgeLoadTargets:
         })
         df.to_parquet(aligned / "population_total.parquet")
 
-        bridge = DataBridge(entity_map={"population.total": "POP"})
+        bridge = DataBridge(entity_map={"population.total": {"engine_var": "POP", "unit": "persons", "nrmsd_method": "direct"}})
         targets = bridge.load_targets(aligned, sector="population")
         # Only 2 data points — should be skipped (minimum is 3)
         pop_targets = [t for t in targets if t.variable_name == "POP"]
@@ -488,7 +488,7 @@ class TestEmpiricalCalibrationRunner:
         runner = EmpiricalCalibrationRunner(
             aligned_dir=aligned,
             normalize=False,
-            entity_map={"population.total": "POP"},
+            entity_map={"population.total": {"engine_var": "POP", "unit": "persons", "nrmsd_method": "direct"}},
         )
         result = runner.quick_evaluate(_trivial_engine, {"scale": 1.0})
         assert isinstance(result, BridgeResult)
