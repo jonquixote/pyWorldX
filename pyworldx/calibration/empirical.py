@@ -521,7 +521,7 @@ if __name__ == "__main__":
     if not targets:
         _log.error(
             "No calibration targets loaded. "
-            "Run: python -m data_pipeline --align  then retry."
+            "Run: python -m data_pipeline run  then retry."
         )
         sys.exit(1)
 
@@ -542,23 +542,49 @@ if __name__ == "__main__":
 
     # ── Build ParameterRegistry scoped to requested params ───────────
     try:
-        from pyworldx.calibration.parameters import ParameterRegistry
-        registry = ParameterRegistry.for_sector(args.sector)
-    except Exception as exc:
-        _log.error("Could not build ParameterRegistry for sector %r: %s", args.sector, exc)
-        sys.exit(1)
+        from pyworldx.calibration.parameters import build_world3_parameter_registry
+        full_registry = build_world3_parameter_registry()
 
-    if args.params:
-        requested = [p.strip() for p in args.params.split(",") if p.strip()]
-        try:
-            registry = registry.subset(requested)
-        except Exception as exc:
-            _log.error("Could not subset registry to params %s: %s", requested, exc)
+        # Determine which parameter names to tune
+        if args.params:
+            requested = [p.strip() for p in args.params.split(",") if p.strip()]
+        else:
+            requested = [
+                e.name for e in full_registry.get_sector_parameters(args.sector)
+            ]
+
+        if not requested:
+            _log.error(
+                "No parameters found for sector %r. "
+                "Check that sector name matches 'sector_owner' in parameters.py. "
+                "Valid sectors: %s",
+                args.sector,
+                sorted({e.sector_owner for e in full_registry.all_entries()}),
+            )
             sys.exit(1)
+
+        # Validate all requested names exist in the registry
+        missing = [n for n in requested if n not in full_registry._entries]
+        if missing:
+            _log.error(
+                "Unknown parameter(s): %s\n"
+                "To list all valid parameter names run:\n"
+                "  python -c \"from pyworldx.calibration.parameters import "
+                "build_world3_parameter_registry; "
+                "[print(e.name) for e in build_world3_parameter_registry().all_entries()]\"",
+                missing,
+            )
+            sys.exit(1)
+
+        registry = full_registry
+
+    except Exception as exc:
+        _log.error("Could not build ParameterRegistry: %s", exc)
+        sys.exit(1)
 
     _log.info(
         "Calibrating %d parameter(s) in sector %r over train window %d-%d …",
-        len(registry),
+        len(requested),
         args.sector,
         train_start,
         train_end,
