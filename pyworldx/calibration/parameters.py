@@ -28,7 +28,7 @@ class ParameterEntry:
     """A single free parameter in the model.
 
     Attributes:
-        name: canonical parameter name (e.g. "population.cbr_base")
+        name: canonical parameter name (e.g. "population.len_scale")
         default: default/literature value
         bounds: (lower, upper) admissible range
         units: physical units
@@ -179,20 +179,40 @@ def build_world3_parameter_registry() -> ParameterRegistry:
 
     # ── Population sector ────────────────────────────────────────────
     reg.register(ParameterEntry(
-        name="population.cbr_base",
-        default=0.04,
-        bounds=(0.02, 0.06),
-        units="1/year",
+        name="population.len_scale",
+        default=1.0,
+        bounds=(0.5, 1.5),
+        units="dimensionless",
         sector_owner="population",
-        rationale="pyWorldX approximation: peak CBR at low IOPC",
+        rationale=(
+            "Multiplicative scale on W3-03 Normal Life Expectancy (_LEN = 28 yr). "
+            "len_scale=1.0 reproduces canonical W3-03. Optimizer tunes the baseline "
+            "mortality level while the full LMF/LMHS/LMP/LMC feedback chain remains intact."
+        ),
+        empirical_anchor="wrld3-03.mdl: LEN = 28",
+        identifiability_risk=IdentifiabilityRisk.MEDIUM,
+        id_risk_rationale=(
+            "Collinear with LMHS table shape; identifiable only when POP trajectory "
+            "is the calibration target."
+        ),
     ))
     reg.register(ParameterEntry(
-        name="population.cdr_base",
-        default=0.028,
-        bounds=(0.01, 0.05),
-        units="1/year",
+        name="population.mtfn_scale",
+        default=1.0,
+        bounds=(0.5, 1.5),
+        units="dimensionless",
         sector_owner="population",
-        rationale="pyWorldX approximation: base CDR",
+        rationale=(
+            "Multiplicative scale on W3-03 Max Total Fertility Normal (_MTFN = 12). "
+            "mtfn_scale=1.0 reproduces canonical W3-03. Optimizer tunes the baseline "
+            "fertility ceiling while the full FM/FCE/DCFS feedback chain remains intact."
+        ),
+        empirical_anchor="wrld3-03.mdl: MTFN = 12",
+        identifiability_risk=IdentifiabilityRisk.MEDIUM,
+        id_risk_rationale=(
+            "Collinear with FCE trajectory; identifiable only when POP trajectory "
+            "is the calibration target and training window covers post-1970 fertility decline."
+        ),
     ))
     reg.register(ParameterEntry(
         name="population.initial_population",
