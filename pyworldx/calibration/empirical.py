@@ -591,12 +591,17 @@ if __name__ == "__main__":
         )
 
     # ── Build CrossValidationConfig ──────────────────────────────────
-    cfg = CrossValidationConfig(
-        train_start=train_start,
-        train_end=train_end,
-        validate_start=validate_start or train_end,
-        validate_end=validate_end or train_end,
-    )
+    cfg = None
+    if args.holdout_window:
+        try:
+            cfg = CrossValidationConfig(
+                train_start=train_start,
+                train_end=train_end,
+                validate_start=validate_start,
+                validate_end=validate_end,
+            )
+        except ValueError as e:
+            parser.error(str(e))
 
     # ── Build runner ─────────────────────────────────────────────────
     aligned_dir = Path(args.aligned_dir)

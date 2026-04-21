@@ -134,6 +134,15 @@ class Engine:
             shared_state=shared,
         )
 
+        # ── Seed exogenous overrides BEFORE init_stocks ──────────────────
+        if self._exogenous_injector is not None:
+            from pyworldx.data.bridge import _get_engine_var
+            overrides = self._exogenous_injector(self.t_start)
+            for ontology_name, val in overrides.items():
+                engine_name = _get_engine_var(ontology_name) or ontology_name
+                # Seed with placeholder 'dimensionless' since stocks haven't initialized units
+                shared[engine_name] = Quantity(float(val), "dimensionless")
+
         # ── Initialize stocks ────────────────────────────────────────
         all_stocks: dict[str, Quantity] = {}
         sector_stock_names: dict[str, list[str]] = {}
@@ -198,17 +207,15 @@ class Engine:
             # ── 0b) Inject exogenous overrides into shared state ────
             if self._exogenous_injector is not None:
                 overrides = self._exogenous_injector(t)
-                from pyworldx.data.bridge import ENTITY_TO_ENGINE_MAP
+                from pyworldx.data.bridge import _get_engine_var
                 for ontology_name, val in overrides.items():
-                    engine_name = ENTITY_TO_ENGINE_MAP.get(
-                        ontology_name, ontology_name
-                    )
+                    engine_name = _get_engine_var(ontology_name) or ontology_name
                     if engine_name in shared:
                         shared[engine_name] = Quantity(
-                            val, shared[engine_name].unit
+                            float(val), shared[engine_name].unit
                         )
                     else:
-                        shared[engine_name] = Quantity(val, "dimensionless")
+                        shared[engine_name] = Quantity(float(val), "dimensionless")
 
             # Snapshot stocks before step for balance auditing
             stocks_before = {k: Quantity(v.magnitude, v.unit) for k, v in all_stocks.items()}
