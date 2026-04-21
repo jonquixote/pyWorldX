@@ -55,6 +55,7 @@ addopts = "-v --tb=short"
 markers = [
     "network: marks tests that require network access (deselect with '-m \"not network\"')",
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests that run the full calibration pipeline (skip with '-m \"not slow\"')",
 ]
 
 [tool.ruff]

@@ -69,6 +69,7 @@ class EmpiricalCalibrationRunner:
         reference_year: Optional[int] = None,
         normalize: bool = True,
         entity_map: Optional[dict[str, Any]] = None,
+        frozen_params: Optional[dict[str, float]] = None,
     ) -> None:
         """Initialize the runner.
 
@@ -81,6 +82,9 @@ class EmpiricalCalibrationRunner:
                 Defaults to CrossValidationConfig.train_start.
             normalize: Whether to normalize trajectories
             entity_map: Override for ENTITY_TO_ENGINE_MAP
+            frozen_params: Parameters held fixed during optimization (e.g. previously
+                calibrated sector params). These are merged into calibrated_parameters
+                in the report but never varied by the optimizer.
         """
         from pyworldx.calibration.metrics import CrossValidationConfig
 
@@ -92,6 +96,7 @@ class EmpiricalCalibrationRunner:
         self.aligned_dir = aligned_dir
         self.reference_connector = reference_connector
         self.usgs_data_dir = usgs_data_dir
+        self.frozen_params: dict[str, float] = frozen_params or {}
         self.bridge = DataBridge(
             reference_year=resolved_ref_year,
             normalize=normalize,
@@ -243,8 +248,27 @@ class EmpiricalCalibrationRunner:
         if not targets:
             return report
 
-        defaults = registry.get_defaults()
-        ref_result = self.validate_against_reference(engine_factory, defaults)
+        # Build active registry (exclude frozen params from optimization)
+        if self.frozen_params:
+            from pyworldx.calibration.parameters import ParameterRegistry as _PR
+            active_registry = _PR()
+            for entry in registry.all_entries():
+                if entry.name not in self.frozen_params:
+                    active_registry.register(entry)
+            # Wrap engine_factory to always inject frozen values
+            _frozen = self.frozen_params
+            _base_factory = engine_factory
+            def _engine_fn(
+                params: dict[str, float],
+            ) -> tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]:
+                return _base_factory({**params, **_frozen})
+            active_engine_factory = _engine_fn  # type: ignore[assignment]
+        else:
+            active_registry = registry
+            active_engine_factory = engine_factory  # type: ignore[assignment]
+
+        defaults = active_registry.get_defaults()
+        ref_result = self.validate_against_reference(active_engine_factory, defaults)
         if ref_result is not None:
             report.reference_result = ref_result
 
@@ -256,14 +280,14 @@ class EmpiricalCalibrationRunner:
 
         objective = self.bridge.build_objective(
             targets,
-            engine_factory,
+            active_engine_factory,
             train_start=train_start,
             train_end=train_end,
         )
 
         pipeline_report = run_calibration_pipeline(
             objective_fn=objective,
-            registry=registry,
+            registry=active_registry,
             cross_val_config=cross_val_config,
             morris_trajectories=morris_trajectories,
             sobol_samples=sobol_samples,
@@ -273,11 +297,16 @@ class EmpiricalCalibrationRunner:
         report.total_evaluations = pipeline_report.total_evaluations
 
         if pipeline_report.calibration is not None:
-            report.calibrated_parameters = pipeline_report.calibration.parameters
+            # Merge frozen params into calibrated_parameters so downstream
+            # consumers (e.g. T2-3 runner) have the full parameter set.
+            report.calibrated_parameters = {
+                **pipeline_report.calibration.parameters,
+                **self.frozen_params,
+            }
             report.converged = pipeline_report.calibration.converged
 
             try:
-                trajectories, time_index = engine_factory(report.calibrated_parameters)
+                trajectories, time_index = active_engine_factory(report.calibrated_parameters)
 
                 # All-years score (diagnostic, not used for NRMSD gate)
                 report.empirical_result = self.bridge.compare(
@@ -304,7 +333,7 @@ class EmpiricalCalibrationRunner:
             if cross_val_config is not None:
                 val_result = self.bridge.calculate_validation_score(
                     targets,
-                    engine_factory,
+                    active_engine_factory,
                     report.calibrated_parameters,
                     validate_start=cross_val_config.validate_start,
                     validate_end=cross_val_config.validate_end,
@@ -322,7 +351,7 @@ class EmpiricalCalibrationRunner:
         usgs_targets = self.load_usgs_targets()
         report.usgs_targets_loaded = len(usgs_targets)
         if usgs_targets:
-            usgs_result = self.cross_validate_usgs(engine_factory, final_params)
+            usgs_result = self.cross_validate_usgs(active_engine_factory, final_params)
             if usgs_result is not None:
                 report.usgs_result = usgs_result
 
