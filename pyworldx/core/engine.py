@@ -207,6 +207,8 @@ class Engine:
                         shared[engine_name] = Quantity(
                             val, shared[engine_name].unit
                         )
+                    else:
+                        shared[engine_name] = Quantity(val, "dimensionless")
 
             # Snapshot stocks before step for balance auditing
             stocks_before = {k: Quantity(v.magnitude, v.unit) for k, v in all_stocks.items()}

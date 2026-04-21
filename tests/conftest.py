@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+import numpy as np
 import pytest
 
 from pyworldx.core.central_registrar import CentralRegistrar
@@ -146,3 +147,58 @@ def run_200yr() -> Callable[
             central_registrar=central_registrar,
         ).run()
     return _run
+
+
+# ── Phase 0: Calibration fixtures ─────────────────────────────────────
+
+from pyworldx.calibration.parameters import build_world3_parameter_registry  # noqa: E402
+from pyworldx.data.bridge import CalibrationTarget  # noqa: E402
+
+
+@pytest.fixture
+def full_registry():
+    """The canonical 17-parameter World3 registry."""
+    return build_world3_parameter_registry()
+
+
+@pytest.fixture
+def fake_engine_factory():
+    """Minimal engine_factory stub: linear growth for all variables."""
+    def factory(params: dict) -> tuple[dict, np.ndarray]:
+        time = np.arange(1900, 2101, dtype=float)
+        pop0 = params.get("population.initial_population", 1.65e9)
+        trajectories = {
+            "POP": pop0 * (1 + 0.015 * (time - 1900)),
+            "IC":  2.1e11 * (1 + 0.02 * (time - 1900)),
+            "AL":  9e8 * np.ones_like(time),
+            "NR":  1e12 * np.exp(-0.005 * (time - 1900)),
+            "PPOL": 2.5e7 * (1 + 0.03 * (time - 1900)),
+        }
+        return trajectories, time
+    return factory
+
+
+@pytest.fixture
+def minimal_targets():
+    """Two CalibrationTargets with known analytic NRMSD."""
+    years = np.array([1960, 1970, 1980, 1990, 2000], dtype=int)
+    return [
+        CalibrationTarget(
+            variable_name="POP",
+            years=years,
+            values=np.array([3.0e9, 3.7e9, 4.4e9, 5.3e9, 6.1e9]),
+            unit="persons",
+            weight=1.0,
+            source="test",
+            nrmsd_method="direct",
+        ),
+        CalibrationTarget(
+            variable_name="NR",
+            years=years,
+            values=np.array([9.5e11, 9.0e11, 8.5e11, 8.0e11, 7.5e11]),
+            unit="resource_units",
+            weight=1.0,
+            source="test",
+            nrmsd_method="change_rate",
+        ),
+    ]

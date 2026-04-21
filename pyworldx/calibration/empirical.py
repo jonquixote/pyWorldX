@@ -343,6 +343,145 @@ class EmpiricalCalibrationRunner:
         return self.bridge.compare(targets, trajectories, time_index)
 
 
+def _resolve_registry(
+    args: Any,
+) -> tuple[ParameterRegistry, list[str]]:
+    """Resolve a ParameterRegistry and parameter name list from CLI args.
+
+    This is the canonical, testable replacement for the broken
+    ParameterRegistry.for_sector() / registry.subset() calls.
+
+    Args:
+        args: Namespace with .sector (str) and .params (str | None)
+
+    Returns:
+        (full_registry, requested_names)
+            full_registry — the complete 16-parameter registry
+            requested_names — list of parameter names to calibrate
+
+    Raises:
+        ValueError: if sector has no parameters or a requested name is unknown
+    """
+    from pyworldx.calibration.parameters import build_world3_parameter_registry
+
+    full_registry = build_world3_parameter_registry()
+
+    params_arg = getattr(args, "params", None)
+    if params_arg and str(params_arg).strip():
+        requested = [p.strip() for p in str(params_arg).split(",") if p.strip()]
+    else:
+        requested = [
+            e.name for e in full_registry.get_sector_parameters(args.sector)
+        ]
+
+    if not requested:
+        raise ValueError(
+            f"No parameters found for sector {args.sector!r}. "
+            "Check that sector name matches 'sector_owner' in parameters.py. "
+            "Valid sectors: population, capital, agriculture, resources, pollution"
+        )
+
+    missing = [n for n in requested if n not in full_registry._entries]
+    if missing:
+        raise ValueError(
+            f"Unknown parameter(s): {missing}. "
+            "Run: python -c \"from pyworldx.calibration.parameters import "
+            "build_world3_parameter_registry; "
+            "[print(e.name) for e in build_world3_parameter_registry().all_entries()]\""
+        )
+
+    return full_registry, requested
+
+
+# ── Sector map for engine factory ─────────────────────────────────────
+
+_SECTOR_NAMES: frozenset[str] = frozenset(
+    ["population", "capital", "agriculture", "resources", "pollution"]
+)
+
+
+def build_sector_engine_factory(
+    sector: str,
+    t_start: float = 0.0,
+    t_end: float = 200.0,
+    master_dt: float = 1.0,
+    calendar_base: float = 1900.0,
+) -> Callable[[dict[str, float]], tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]]:
+    """Build an engine_factory callable for calibration.
+
+    Always runs all 5 World3 sectors (parameter coupling requires it),
+    but the ``sector`` argument is validated to catch typos early.
+
+    Parameters are injected as exogenous overrides keyed by their
+    short name (i.e. ``"len_scale"`` not ``"population.len_scale"``),
+    since that is what the sector ``compute()`` methods read from
+    the shared-state ``inputs`` dict.
+
+    Args:
+        sector: One of the 5 World3 sector names (validated only).
+        t_start: Simulation start in sim-time units (0 = year 1900).
+        t_end: Simulation end in sim-time units (200 = year 2100).
+        master_dt: Integration step size in years.
+        calendar_base: Calendar year corresponding to t_start (default 1900).
+
+    Returns:
+        Callable: params -> (trajectories_dict, time_index_array)
+            time_index_array is in calendar years.
+
+    Raises:
+        ValueError: if sector is not one of the 5 known World3 sectors.
+    """
+    if sector not in _SECTOR_NAMES:
+        raise ValueError(
+            f"Unknown sector {sector!r}. "
+            f"Valid sectors: {sorted(_SECTOR_NAMES)}"
+        )
+
+    def factory(
+        params: dict[str, float],
+    ) -> tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]]:
+        from pyworldx.core.engine import Engine
+        from pyworldx.sectors.population import PopulationSector
+        from pyworldx.sectors.capital import CapitalSector
+        from pyworldx.sectors.agriculture import AgricultureSector
+        from pyworldx.sectors.resources import ResourcesSector
+        from pyworldx.sectors.pollution import PollutionSector
+
+        # Strip sector prefix so sectors can read from shared state by short key
+        # e.g. "population.len_scale" → "len_scale"
+        short_params: dict[str, float] = {}
+        for name, val in params.items():
+            short_key = name.split(".", 1)[-1] if "." in name else name
+            short_params[short_key] = val
+
+        def _injector(_t: float) -> dict[str, float]:
+            return short_params
+
+        engine = Engine(
+            sectors=[
+                PopulationSector(),
+                CapitalSector(),
+                AgricultureSector(),
+                ResourcesSector(),
+                PollutionSector(),
+            ],
+            master_dt=master_dt,
+            t_start=t_start,
+            t_end=t_end,
+            exogenous_injector=_injector,
+        )
+        result = engine.run()
+
+        # Convert sim-time to calendar years
+        time_index: np.ndarray[Any, Any] = (
+            np.asarray(result.time_index, dtype=float) + calendar_base
+        )
+        return result.trajectories, time_index
+
+    return factory
+
+
+
 if __name__ == "__main__":
     import argparse
     import json
