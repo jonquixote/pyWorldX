@@ -447,8 +447,6 @@ def build_sector_engine_factory(
         from pyworldx.sectors.resources import ResourcesSector
         from pyworldx.sectors.pollution import PollutionSector
 
-        # Strip sector prefix so sectors can read from shared state by short key
-        # e.g. "population.len_scale" → "len_scale"
         short_params: dict[str, float] = {}
         for name, val in params.items():
             short_key = name.split(".", 1)[-1] if "." in name else name
@@ -472,14 +470,12 @@ def build_sector_engine_factory(
         )
         result = engine.run()
 
-        # Convert sim-time to calendar years
         time_index: np.ndarray[Any, Any] = (
             np.asarray(result.time_index, dtype=float) + calendar_base
         )
         return result.trajectories, time_index
 
     return factory
-
 
 
 if __name__ == "__main__":
@@ -640,50 +636,25 @@ if __name__ == "__main__":
 
     # ── Build ParameterRegistry scoped to requested params ───────────
     try:
+        registry, requested = _resolve_registry(args)
+
+        # Scope registry to only the requested parameters.
+        # The pipeline optimizes over registry.all_entries(), so passing the
+        # full 17-param registry causes it to drift all sectors while the
+        # requested params sit at their defaults unchanged.
         from pyworldx.calibration.parameters import (
             ParameterEntry,
             build_world3_parameter_registry,
         )
-
         full_registry = build_world3_parameter_registry()
-
-        if args.params:
-            requested = [p.strip() for p in args.params.split(",") if p.strip()]
-        else:
-            requested = [
-                e.name for e in full_registry.get_sector_parameters(args.sector)
-            ]
-
-        if not requested:
-            _log.error(
-                "No parameters found for sector %r. "
-                "Check that sector name matches 'sector_owner' in parameters.py. "
-                "Valid sectors: %s",
-                args.sector,
-                sorted({e.sector_owner for e in full_registry.all_entries()}),
-            )
-            sys.exit(1)
-
-        missing = [n for n in requested if n not in full_registry._entries]
-        if missing:
-            _log.error(
-                "Unknown parameter(s): %s\n"
-                "To list all valid parameter names run:\n"
-                "  python -c \"from pyworldx.calibration.parameters import "
-                "build_world3_parameter_registry; "
-                "[print(e.name) for e in build_world3_parameter_registry().all_entries()]\"",
-                missing,
-            )
-            sys.exit(1)
-
-        # ── Scope registry to only the requested parameters ──────────
-        # The pipeline optimizes over registry.all_entries(), so passing the
-        # full 16-param registry causes it to drift all sectors while the two
-        # requested params sit at their defaults unchanged.
-        registry = ParameterRegistry()
+        scoped_registry = ParameterRegistry()
         for name in requested:
-            registry.register(full_registry.lookup(name))
+            scoped_registry.register(full_registry.lookup(name))
+        registry = scoped_registry
 
+    except ValueError as exc:
+        _log.error("%s", exc)
+        sys.exit(1)
     except Exception as exc:
         _log.error("Could not build ParameterRegistry: %s", exc)
         sys.exit(1)
@@ -698,8 +669,6 @@ if __name__ == "__main__":
 
     # ── Engine factory (sector-scoped) ───────────────────────────────
     try:
-        from pyworldx.engine import build_sector_engine_factory
-
         engine_factory = build_sector_engine_factory(args.sector)
     except Exception as exc:
         _log.error(
@@ -710,9 +679,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # ── Build sector-scoped objective weights ─────────────────────────
-    # Give weight=1.0 only to engine vars the sector actually controls.
-    # All other targets get 0.0 so they don't penalise sector-specific
-    # parameters for trajectories they cannot move.
     _SECTOR_ENGINE_VARS: dict[str, set[str]] = {
         "population": {"POP"},
         "capital":    {"IC", "SC", "industrial_output", "industrial_output_per_capita"},
