@@ -46,15 +46,15 @@ class TestRunnerEndToEnd:
 
     YEARS = np.array([1960, 1970, 1980, 1990, 2000], dtype=int)
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def pop_targets(self, full_reg, population_factory) -> list[CalibrationTarget]:
         """Synthetic POP targets at 5 % above the default trajectory."""
         defaults = full_reg.get_defaults()
         traj, time = population_factory(defaults)
-        values = np.interp(self.YEARS, time, traj["POP"]) * 1.05
-        return [_synthetic_target("POP", self.YEARS, values)]
+        values = np.interp(TestRunnerEndToEnd.YEARS, time, traj["POP"]) * 1.05
+        return [_synthetic_target("POP", TestRunnerEndToEnd.YEARS, values)]
 
-    @pytest.fixture
+    @pytest.fixture(scope="class")
     def scoped_pop_registry(self, full_reg) -> tuple[ParameterRegistry, list[str]]:
         """Registry scoped to only the population-sector parameters."""
         args = SimpleNamespace(sector="population", params=None)
@@ -64,43 +64,32 @@ class TestRunnerEndToEnd:
             scoped.register(full.lookup(name))
         return scoped, requested
 
+    @pytest.fixture(scope="class")
+    def calibrated_report(self, pop_targets, scoped_pop_registry, population_factory, tmp_path_factory):
+        from pyworldx.calibration.empirical import EmpiricalCalibrationRunner
+        registry, _ = scoped_pop_registry
+        aligned = tmp_path_factory.mktemp("aligned")
+        runner = EmpiricalCalibrationRunner(aligned_dir=aligned)
+        runner.load_targets = lambda w=None: pop_targets
+        return runner.run(
+            registry=registry,
+            engine_factory=population_factory,
+            weights={"POP": 1.0},
+            morris_trajectories=2,
+            sobol_samples=32,
+        )
+
     def _make_runner(self, tmp_path: Path) -> EmpiricalCalibrationRunner:
         aligned = tmp_path / "aligned"
         aligned.mkdir(exist_ok=True)
         return EmpiricalCalibrationRunner(aligned_dir=aligned)
 
-    def test_run_returns_report_with_correct_type(
-        self, tmp_path, pop_targets, scoped_pop_registry, population_factory
-    ):
+    def test_run_returns_report_with_correct_type(self, calibrated_report):
         from pyworldx.calibration.empirical import EmpiricalCalibrationReport
-        registry, _ = scoped_pop_registry
-        runner = self._make_runner(tmp_path)
-        runner.load_targets = lambda w=None: pop_targets
+        assert isinstance(calibrated_report, EmpiricalCalibrationReport)
 
-        report = runner.run(
-            registry=registry,
-            engine_factory=population_factory,
-            weights={"POP": 1.0},
-            morris_trajectories=2,
-            sobol_samples=32,
-        )
-        assert isinstance(report, EmpiricalCalibrationReport)
-
-    def test_run_loads_correct_target_count(
-        self, tmp_path, pop_targets, scoped_pop_registry, population_factory
-    ):
-        registry, _ = scoped_pop_registry
-        runner = self._make_runner(tmp_path)
-        runner.load_targets = lambda w=None: pop_targets
-
-        report = runner.run(
-            registry=registry,
-            engine_factory=population_factory,
-            weights={"POP": 1.0},
-            morris_trajectories=2,
-            sobol_samples=32,
-        )
-        assert report.empirical_targets_loaded == len(pop_targets)
+    def test_run_loads_correct_target_count(self, pop_targets, calibrated_report):
+        assert calibrated_report.empirical_targets_loaded == len(pop_targets)
 
     def test_run_with_cross_val_config_populates_validation_nrmsd(
         self, tmp_path, pop_targets, scoped_pop_registry, population_factory
@@ -152,40 +141,15 @@ class TestRunnerEndToEnd:
         else:
             pytest.fail("No NRMSD available in report after run()")
 
-    def test_calibrated_parameters_are_finite(
-        self, tmp_path, pop_targets, scoped_pop_registry, population_factory
-    ):
-        registry, _ = scoped_pop_registry
-        runner = self._make_runner(tmp_path)
-        runner.load_targets = lambda w=None: pop_targets
-
-        report = runner.run(
-            registry=registry,
-            engine_factory=population_factory,
-            weights={"POP": 1.0},
-            morris_trajectories=2,
-            sobol_samples=32,
-        )
-        if report.calibrated_parameters:
-            for name, val in report.calibrated_parameters.items():
+    def test_calibrated_parameters_are_finite(self, calibrated_report):
+        if calibrated_report.calibrated_parameters:
+            for name, val in calibrated_report.calibrated_parameters.items():
                 assert np.isfinite(val), f"Parameter {name!r} is not finite: {val}"
 
-    def test_calibrated_parameters_keys_match_requested(
-        self, tmp_path, pop_targets, scoped_pop_registry, population_factory
-    ):
-        registry, requested = scoped_pop_registry
-        runner = self._make_runner(tmp_path)
-        runner.load_targets = lambda w=None: pop_targets
-
-        report = runner.run(
-            registry=registry,
-            engine_factory=population_factory,
-            weights={"POP": 1.0},
-            morris_trajectories=2,
-            sobol_samples=32,
-        )
-        if report.calibrated_parameters:
-            for name in report.calibrated_parameters:
+    def test_calibrated_parameters_keys_match_requested(self, scoped_pop_registry, calibrated_report):
+        _, requested = scoped_pop_registry
+        if calibrated_report.calibrated_parameters:
+            for name in calibrated_report.calibrated_parameters:
                 assert name in requested, (
                     f"Calibrated key {name!r} was not in requested list {requested}"
                 )
@@ -222,26 +186,12 @@ class TestRunnerEndToEnd:
         )
         assert report.empirical_targets_loaded == 2
 
-    def test_output_json_written_when_output_arg_passed(
-        self, tmp_path, pop_targets, scoped_pop_registry, population_factory, monkeypatch
-    ):
+    def test_output_json_written_when_output_arg_passed(self, tmp_path, calibrated_report):
         """Simulate --output flag: after run(), calibrated params should be
         serialisable as JSON (mirrors what the CLI does)."""
-        registry, _ = scoped_pop_registry
-        runner = self._make_runner(tmp_path)
-        runner.load_targets = lambda w=None: pop_targets
-
-        report = runner.run(
-            registry=registry,
-            engine_factory=population_factory,
-            weights={"POP": 1.0},
-            morris_trajectories=2,
-            sobol_samples=32,
-        )
-
         out_path = tmp_path / "params.json"
-        if report.calibrated_parameters:
-            out_path.write_text(json.dumps(report.calibrated_parameters, indent=2))
+        if calibrated_report.calibrated_parameters:
+            out_path.write_text(json.dumps(calibrated_report.calibrated_parameters, indent=2))
             loaded = json.loads(out_path.read_text())
             assert isinstance(loaded, dict)
             for k, v in loaded.items():

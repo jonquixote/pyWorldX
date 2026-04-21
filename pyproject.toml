@@ -52,7 +52,10 @@ warn_unused_ignores = false
 [tool.pytest.ini_options]
 testpaths = ["tests", "data_pipeline/tests"]
 addopts = "-v --tb=short"
-markers = ["network: marks tests that require network access (deselect with '-m \"not network\"')"]
+markers = [
+    "network: marks tests that require network access (deselect with '-m \"not network\"')",
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
 
 [tool.ruff]
 target-version = "py311"
