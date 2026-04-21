@@ -1,0 +1,18 @@
+{
+  "population.len_scale": 1.0,
+  "population.mtfn_scale": 1.0,
+  "population.initial_population": 1650000000.0,
+  "capital.initial_ic": 100004788101.30173,
+  "capital.icor": 3.0,
+  "capital.alic": 19.99965543943503,
+  "capital.alsc": 30.0,
+  "agriculture.initial_al": 900000000.0,
+  "agriculture.initial_land_fertility": 300.0,
+  "agriculture.land_development_rate": 0.005,
+  "agriculture.sfpc": 230.0,
+  "resources.initial_nr": 1000000000000.0,
+  "resources.policy_year": 4000.0,
+  "pollution.initial_ppol": 25000000.0,
+  "pollution.ahl70": 1.5,
+  "pollution.pptd": 111.8
+}
