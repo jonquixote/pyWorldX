@@ -134,14 +134,6 @@ class Engine:
             shared_state=shared,
         )
 
-        # ── Seed exogenous overrides BEFORE init_stocks ──────────────────
-        if self._exogenous_injector is not None:
-            from pyworldx.data.bridge import _get_engine_var
-            overrides = self._exogenous_injector(self.t_start)
-            for ontology_name, val in overrides.items():
-                engine_name = _get_engine_var(ontology_name) or ontology_name
-                # Seed with placeholder 'dimensionless' since stocks haven't initialized units
-                shared[engine_name] = Quantity(float(val), "dimensionless")
 
         # ── Initialize stocks ────────────────────────────────────────
         all_stocks: dict[str, Quantity] = {}

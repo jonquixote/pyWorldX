@@ -700,7 +700,7 @@ class DataBridge:
             mask = (target.years >= start_year) & (target.years <= end_year)
             years = target.years[mask]
             values = target.values[mask]
-            if len(years) < 2:
+            if len(years) < 3:
                 continue
             clipped.append(
                 CalibrationTarget(
