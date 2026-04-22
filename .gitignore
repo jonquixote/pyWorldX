@@ -53,8 +53,8 @@ Thumbs.db
 !/.github/
 
 # Hide specific folders and files
-/plans/
-/ask_notebook.py
+# /plans/
+# /ask_notebook.py
 
 # Hide all top-level markdown files except explicit ones
 /*.md
