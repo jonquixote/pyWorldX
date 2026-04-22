@@ -597,6 +597,13 @@ if __name__ == "__main__":
         default=42,
         help="Random seed (default: 42).",
     )
+    parser.add_argument(
+        "--frozen-params",
+        default=None,
+        metavar="PATH",
+        help="JSON file of previously calibrated parameters to hold fixed (e.g. "
+        "output/calibrated_params/population.json). Keys starting with '_' are ignored.",
+    )
 
     args = parser.parse_args()
 
@@ -632,9 +639,21 @@ if __name__ == "__main__":
         except ValueError as e:
             parser.error(str(e))
 
+    # ── Load frozen params (if provided) ─────────────────────────────
+    frozen_params: dict[str, float] = {}
+    if args.frozen_params:
+        frozen_path = Path(args.frozen_params)
+        if not frozen_path.exists():
+            _log.error("--frozen-params file not found: %s", frozen_path)
+            sys.exit(1)
+        with open(frozen_path) as fh:
+            raw_frozen = json.load(fh)
+        frozen_params = {k: float(v) for k, v in raw_frozen.items() if not k.startswith("_")}
+        _log.info("Loaded %d frozen parameter(s) from %s", len(frozen_params), frozen_path)
+
     # ── Build runner ─────────────────────────────────────────────────
     aligned_dir = Path(args.aligned_dir)
-    runner = EmpiricalCalibrationRunner(aligned_dir=aligned_dir)
+    runner = EmpiricalCalibrationRunner(aligned_dir=aligned_dir, frozen_params=frozen_params)
 
     # ── Load targets ─────────────────────────────────────────────────
     _log.info("Loading empirical targets from %s …", aligned_dir)
@@ -786,8 +805,14 @@ if __name__ == "__main__":
     if args.output and report.calibrated_parameters:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Exclude frozen params — they belong in their own sector JSON.
+        sector_params = {
+            k: v
+            for k, v in report.calibrated_parameters.items()
+            if k not in frozen_params and not k.startswith("_")
+        }
         with open(out_path, "w") as fh:
-            json.dump(report.calibrated_parameters, fh, indent=2)
+            json.dump(sector_params, fh, indent=2)
         _log.info("Calibrated parameters written to %s", out_path)
 
     # ── NRMSD gate (uses train-window score, not all-years) ──────────
