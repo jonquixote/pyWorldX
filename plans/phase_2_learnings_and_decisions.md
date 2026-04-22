@@ -1,0 +1,57 @@
+# Phase 2 Calibration: Learnings and Decisions (T2-1 → T2-3)
+
+As we have progressed through the first half of Phase 2 (Population, Capital, and Agriculture sector calibrations), we encountered several deep structural challenges regarding how empirical data maps to a system dynamics engine. 
+
+Here is a summary of the key learnings and architectural decisions we have made to resolve them.
+
+---
+
+## 1. Instance Attribute Injection vs. Runtime Exogenous Overrides
+**The Problem:** 
+World3 sectors utilize many parameters (e.g., `initial_population`, `initial_ic`, `initial_al`) strictly during their `init_stocks()` phase, which executes exactly once at $t=0$. Previously, the calibration optimizer fed parameter samples purely into the runtime `inputs` dictionary. This meant initial boundary conditions and hardcoded class constants were completely ignored by the engine, causing flat or stunted calibration runs.
+
+**The Decision:** 
+We implemented `build_sector_engine_factory` in `empirical.py`. This factory explicitly intercepts the optimizer's parameter samples and maps them directly to the instance attributes of the instantiated sector objects (e.g., `setattr(ag_sector, "initial_arable_land", val)`) *before* the `Engine` is assembled and initialized.
+
+**The Learning:** 
+True structural calibration requires tuning the initial state of the differential equations, not just overriding the dynamic signals mid-loop. 
+
+## 2. Sequential Sector Lock-in (`frozen_params`)
+**The Problem:** 
+Running Sobol/Morris optimization across the entire coupled 5-sector pyWorldX model simultaneously has too high dimensionality. The optimizer struggles to find global minima and often compensates for errors in one sector by aggressively breaking the physics of another.
+
+**The Decision:**
+We implemented a sequential calibration architecture via a `--frozen-params` CLI flag and `EmpiricalCalibrationRunner` support. This allows us to calibrate Population (T2-1), save the outputs, and pass them as locked constants into the Capital calibration (T2-2), and so on. 
+
+**The Learning:**
+Coupled system dynamics models must be calibrated sequentially from the most independent sectors (Population) down to the most dependent sectors (Agriculture, Resources).
+
+## 3. Strict Decoupling of Model Units and Display Units
+**The Problem:** 
+During the Agriculture sector calibration (T2-3), the integration tests failed because the `food_per_capita` output was expected to hit real-world targets (~2200 `kcal/day`). Forcing the engine to output 2200 mathematically shattered the arable land equilibrium, because the engine uses generic "vegetable-equivalent kg/person/yr" units.
+
+**The Decision:**
+We decoupled structural units from display units. The engine and optimizer are now strictly gated to check for plausible structural bounds (`100–1000 kg/yr`). All real-world conversions (`FOOD_KG_TO_KCAL_DAY = 4.93`) are segregated entirely to the `display_units.py` layer. 
+
+**The Learning:** 
+The mathematical equilibrium of the internal differential equations must never be sacrificed for real-world display convenience. Calibrate the structural representation, then map the display representation.
+
+## 4. Prioritized Multi-Source Deduplication
+**The Problem:** 
+When pulling data for the same engine variable (e.g., Food per capita) from multiple Parquet sources (OWID, FAOSTAT FBS, FAOSTAT Historical), we ended up with overlapping years with conflicting values. This created massive artificial vertical spikes in the calibration target, which destroyed the optimizer's gradients.
+
+**The Decision:**
+We added a `source_priority` array to the `ENTITY_TO_ENGINE_MAP` in `bridge.py`. The `DataBridge` now ranks overlapping data points by source priority and drops duplicates, enforcing a single, cohesive spline. 
+
+**The Learning:**
+Data cleanliness and continuity are vastly more important than data volume. The optimizer can interpolate gaps easily, but artificial discontinuities will permanently break the NRMSD objective function.
+
+## 5. Differentiating Ingestion Gates vs. Cross-Validation Gates
+**The Problem:** 
+We introduced a strict `< 3` data points threshold for loading raw targets from Parquet to ensure meaningful splines. However, when applied globally, it accidentally affected `_clip_targets_to_window`, causing valid 2-point holdout validation windows (e.g., `[1990, 2000]`) to be silently dropped, resulting in `NaN` validation errors.
+
+**The Decision:**
+We separated the gates: raw ingestion (`load_targets`) remains at `< 3` to ensure base spline quality, while sub-window clipping (`_clip_targets_to_window`) was restored to `< 2` to permit standard 2-point holdout validation.
+
+**The Learning:**
+Cross-validation semantics require different length constraints than raw data ingestion.
