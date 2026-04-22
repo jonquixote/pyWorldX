@@ -48,6 +48,7 @@ class EmpiricalCalibrationReport:
 
     # Summary
     calibrated_parameters: dict[str, float] = field(default_factory=dict)
+    sector_trajectories: dict[str, dict[int, float]] = field(default_factory=dict)
     converged: bool = False
     total_evaluations: int = 0
     validation_nrmsd: Optional[float] = None
@@ -308,6 +309,13 @@ class EmpiricalCalibrationRunner:
             try:
                 trajectories, time_index = active_engine_factory(report.calibrated_parameters)
 
+                # Capture sector trajectories for downstream display
+                for var_name, traj_arr in trajectories.items():
+                    year_map: dict[int, float] = {}
+                    for i, t_val in enumerate(time_index):
+                        year_map[int(t_val)] = float(traj_arr[i])
+                    report.sector_trajectories[var_name] = year_map
+
                 # All-years score (diagnostic, not used for NRMSD gate)
                 report.empirical_result = self.bridge.compare(
                     targets,
@@ -484,13 +492,60 @@ def build_sector_engine_factory(
         def _injector(_t: float) -> dict[str, float]:
             return short_params
 
+        # Create sector instances
+        pop_sector = PopulationSector()
+        cap_sector = CapitalSector()
+        ag_sector = AgricultureSector()
+        res_sector = ResourcesSector()
+        pol_sector = PollutionSector()
+
+        # Apply calibration params to sector instances.
+        # The exogenous injector handles runtime inputs (e.g. len_scale,
+        # mtfn_scale), but init-time attributes and sector-local constants
+        # must be set directly on the instance so init_stocks() and
+        # compute() use the calibrated values.
+        _SECTOR_PARAM_MAP: dict[str, list[tuple[str, str, object]]] = {
+            # (short_param_key, attribute_name, sector_instance)
+        }
+
+        # Capital sector
+        _CAP_MAP = {
+            "initial_ic": "initial_ic",
+            "initial_sc": "initial_sc",
+            "icor": "icor",
+            "alic": "alic",
+            "alsc": "alsc",
+        }
+        for short_key, attr_name in _CAP_MAP.items():
+            if short_key in short_params:
+                setattr(cap_sector, attr_name, short_params[short_key])
+
+        # Agriculture sector
+        _AG_MAP = {
+            "initial_al": "initial_arable_land",
+            "initial_land_fertility": "initial_land_fertility",
+            "land_development_rate": "land_development_rate",
+            "sfpc": "sfpc",
+        }
+        for short_key, attr_name in _AG_MAP.items():
+            if short_key in short_params:
+                setattr(ag_sector, attr_name, short_params[short_key])
+
+        # Resources sector
+        if "initial_nr" in short_params:
+            setattr(res_sector, "initial_nr", short_params["initial_nr"])
+
+        # Pollution sector
+        if "initial_ppol" in short_params:
+            setattr(pol_sector, "initial_ppol", short_params["initial_ppol"])
+
         engine = Engine(
             sectors=[
-                PopulationSector(),
-                CapitalSector(),
-                AgricultureSector(),
-                ResourcesSector(),
-                PollutionSector(),
+                pop_sector,
+                cap_sector,
+                ag_sector,
+                res_sector,
+                pol_sector,
             ],
             master_dt=master_dt,
             t_start=t_start,

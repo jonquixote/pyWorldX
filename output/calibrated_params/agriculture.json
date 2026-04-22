@@ -1,0 +1,19 @@
+{
+  "agriculture.initial_al": 500000000.0,
+  "agriculture.initial_land_fertility": 300.0,
+  "agriculture.land_development_rate": 0.005,
+  "agriculture.sfpc": 230.0,
+  "_calibration_notes": {
+    "status": "calibrated",
+    "train_nrmsd": 0.9392547889933219,
+    "data_sources": [
+      "faostat_fbs_food_supply",
+      "faostat_rl_arable_land"
+    ],
+    "frozen_sectors": [
+      "population",
+      "capital"
+    ],
+    "date": "2026-04-22"
+  }
+}

@@ -315,3 +315,255 @@ def test_capital_params_json_contains_only_capital_keys() -> None:
     assert not non_cap, f"capital.json contains non-capital params: {non_cap}"
     assert "capital.initial_ic" in params
     assert "capital.icor" in params
+
+
+# ── T2-3: Agriculture sector ─────────────────────────────────────────
+
+
+def test_agriculture_entity_map_has_food_and_arable_land() -> None:
+    """T2-3: ENTITY_TO_ENGINE_MAP must have food_per_capita and AL entries."""
+    food_entries = [
+        e for e in ENTITY_TO_ENGINE_MAP.values()
+        if e.get("engine_var") == "food_per_capita"
+    ]
+    assert food_entries, "No food_per_capita engine_var in ENTITY_TO_ENGINE_MAP"
+
+    al_entries = [
+        e for e in ENTITY_TO_ENGINE_MAP.values()
+        if e.get("engine_var") == "AL"
+    ]
+    assert al_entries, "No AL engine_var in ENTITY_TO_ENGINE_MAP"
+
+
+def test_agriculture_runner_accepts_frozen_pop_and_capital() -> None:
+    """T2-3: EmpiricalCalibrationRunner accepts pop+capital frozen params."""
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    frozen = {**pop_params, **cap_params}
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+    assert runner.frozen_params == frozen
+
+
+def test_agriculture_calibration_frozen_params_preserved_in_report() -> None:
+    """T2-3: frozen pop+capital params must appear unchanged after ag calibration."""
+    from pyworldx.calibration.parameters import (
+        ParameterRegistry,
+        build_world3_parameter_registry,
+    )
+
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    frozen = {**pop_params, **cap_params}
+
+    args = SimpleNamespace(sector="agriculture", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("agriculture")
+
+    defaults = registry.get_defaults()
+    traj, time = engine_factory(defaults)
+    synthetic_targets = [
+        CalibrationTarget(
+            variable_name="food_per_capita",
+            years=np.array([1970, 1980, 1990, 2000, 2010], dtype=int),
+            values=np.interp(
+                [1970, 1980, 1990, 2000, 2010], time, traj["food_per_capita"]
+            ) * 1.02,
+            unit="food_units_per_person",
+            weight=1.0,
+            source="synthetic",
+            nrmsd_method="change_rate",
+        )
+    ]
+
+    cfg = CrossValidationConfig(
+        train_start=1970,
+        train_end=2000,
+        validate_start=2000,
+        validate_end=2010,
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+        runner.load_targets = lambda _w=None: synthetic_targets  # type: ignore[method-assign]
+
+        report = runner.run(
+            registry=registry,
+            engine_factory=engine_factory,
+            weights={"food_per_capita": 1.0},
+            cross_val_config=cfg,
+            morris_trajectories=2,
+            sobol_samples=16,
+        )
+
+    assert report.converged is True
+    assert report.train_result is not None
+    assert math.isfinite(report.train_result.composite_nrmsd)
+
+    # Frozen params must be preserved exactly
+    for param, expected_val in frozen.items():
+        actual = report.calibrated_parameters.get(param)
+        assert actual == expected_val, (
+            f"Frozen param '{param}' modified: expected {expected_val}, got {actual}"
+        )
+
+    # Agriculture params must be present
+    assert "agriculture.initial_al" in report.calibrated_parameters
+
+    # sector_trajectories must be populated
+    assert len(report.sector_trajectories) > 0, "sector_trajectories is empty"
+    assert "food_per_capita" in report.sector_trajectories, (
+        "food_per_capita missing from sector_trajectories"
+    )
+
+
+def test_agriculture_sector_trajectories_fpc_display_conversion() -> None:
+    """T2-3: display conversion kcal/day = kg/yr × 4.93 must stay in display layer."""
+    from pyworldx.calibration.display_units import (
+        FOOD_KG_TO_KCAL_DAY,
+        convert_food_per_capita_to_display,
+        convert_food_trajectory_to_display,
+    )
+
+    # Verify the conversion factor is ≈ 4.93
+    assert abs(FOOD_KG_TO_KCAL_DAY - 4.932) < 0.01, (
+        f"FOOD_KG_TO_KCAL_DAY={FOOD_KG_TO_KCAL_DAY}, expected ≈4.932"
+    )
+
+    # Sanity: 450 kg/yr should be around 2200 kcal/day
+    kcal = convert_food_per_capita_to_display(450.0)
+    assert 2100 < kcal < 2300, f"450 kg/yr -> {kcal:.0f} kcal/day, expected ~2200"
+
+    # Trajectory conversion
+    traj = {1970: 450.0, 1980: 500.0, 1990: 550.0}
+    display = convert_food_trajectory_to_display(traj)
+    assert all(y in display for y in traj)
+    assert abs(display[1970] - 450.0 * FOOD_KG_TO_KCAL_DAY) < 0.01
+
+
+@pytest.mark.slow
+def test_agriculture_calibration_nrmsd_gate() -> None:
+    """T2-3 gate: real-data agriculture calibration.
+
+    Food per capita must converge to a finite NRMSD. This test runs
+    the full optimizer with frozen population and capital parameters.
+    """
+    aligned = (
+        Path(__file__).parent.parent.parent
+        / "data_pipeline"
+        / "data"
+        / "aligned"
+    )
+    if not aligned.exists() or not (aligned / "food_supply_kcal_per_capita.parquet").exists():
+        pytest.skip("No aligned parquet data — run: python -m data_pipeline run")
+
+    # Load frozen population params
+    pop_json = (
+        Path(__file__).parent.parent.parent
+        / "output"
+        / "calibrated_params"
+        / "population.json"
+    )
+    cap_json = (
+        Path(__file__).parent.parent.parent
+        / "output"
+        / "calibrated_params"
+        / "capital.json"
+    )
+    frozen_params: dict[str, float] = {}
+    if pop_json.exists():
+        raw = json.loads(pop_json.read_text())
+        frozen_params.update({k: float(v) for k, v in raw.items() if not k.startswith("_")})
+    if cap_json.exists():
+        raw = json.loads(cap_json.read_text())
+        frozen_params.update({k: float(v) for k, v in raw.items() if not k.startswith("_")})
+
+    args = SimpleNamespace(sector="agriculture", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("agriculture")
+
+    cfg = CrossValidationConfig()  # train 1970–2010, validate 2010–2023
+
+    runner = EmpiricalCalibrationRunner(aligned_dir=aligned, frozen_params=frozen_params)
+    report = runner.run(
+        registry=registry,
+        engine_factory=engine_factory,
+        weights={"food_per_capita": 1.0, "AL": 0.5},
+        cross_val_config=cfg,
+        morris_trajectories=5,
+        sobol_samples=64,
+    )
+
+    assert report.train_result is not None, "No train result — data pipeline issue"
+    nrmsd = report.train_result.composite_nrmsd
+    assert math.isfinite(nrmsd), "train NRMSD is NaN/inf — upstream data issue"
+
+    # Check sector_trajectories populated
+    assert "food_per_capita" in report.sector_trajectories, (
+        "food_per_capita missing from sector_trajectories"
+    )
+
+    # Check plausibility of fpc in W3-03 model units (veg-equiv kg/person/yr).
+    # The W3-03 FPC at 1980–2020 is typically 180–350 kg/yr depending on
+    # parameter tuning. Real-world kcal/day mapping is a display-layer concern.
+    fpc_traj = report.sector_trajectories.get("food_per_capita", {})
+    if fpc_traj:
+        window = {y: v for y, v in fpc_traj.items() if 1980 <= y <= 2020}
+        if window:
+            vals = list(window.values())
+            assert min(vals) > 100, (
+                f"fpc too low in 1980-2020: min={min(vals):.0f} kg/yr"
+            )
+            assert max(vals) < 1000, (
+                f"fpc too high in 1980-2020: max={max(vals):.0f} kg/yr"
+            )
+
+    if report.validation_nrmsd is not None and math.isfinite(report.validation_nrmsd):
+        assert report.validation_nrmsd < nrmsd * 3.0, (
+            f"Validation NRMSD ({report.validation_nrmsd:.4f}) >3x train "
+            f"({nrmsd:.4f}) — severe overfitting."
+        )
+
+    # Write calibrated params
+    output_dir = (
+        Path(__file__).parent.parent.parent / "output" / "calibrated_params"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ag_params = {
+        k: v for k, v in report.calibrated_parameters.items()
+        if k.startswith("agriculture.")
+    }
+    ag_params["_calibration_notes"] = {  # type: ignore[assignment]
+        "status": "calibrated",
+        "train_nrmsd": float(nrmsd),
+        "data_sources": ["faostat_fbs_food_supply", "faostat_rl_arable_land"],
+        "frozen_sectors": ["population", "capital"],
+        "date": "2026-04-22",
+    }
+    ag_json = output_dir / "agriculture.json"
+    ag_json.write_text(json.dumps(ag_params, indent=2) + "\n")
+

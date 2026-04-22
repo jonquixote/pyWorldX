@@ -163,6 +163,11 @@ class AgricultureSector:
         lfert = stocks["LFERT"].magnitude
         cai = stocks["CAI"].magnitude
 
+        # Read calibration parameters from inputs (injected by exogenous_injector)
+        sfpc = inputs.get(
+            "sfpc", Quantity(self.sfpc, "veg_equiv_kg_per_person_yr")
+        ).magnitude
+
         # Read inputs
         io = inputs.get(
             "industrial_output", Quantity(6.65e10, "industrial_output_units")
@@ -177,9 +182,9 @@ class AgricultureSector:
         # ── Agricultural input allocation (W3-03: FPC/IFPC, IFPC is dynamic) ─
         # Use last-step raw FPC; guard against bootstrap-zero from engine seed.
         prev_fpc_q = inputs.get("food_per_capita")
-        prev_fpc = prev_fpc_q.magnitude if prev_fpc_q is not None else self.sfpc
+        prev_fpc = prev_fpc_q.magnitude if prev_fpc_q is not None else sfpc
         if prev_fpc <= 1.0:
-            prev_fpc = self.sfpc
+            prev_fpc = sfpc
         ifpc = table_lookup(iopc, _IFPC_X, _IFPC_Y)
         fpc_ratio_alloc = prev_fpc / max(ifpc, 1.0)
         fioaa = table_lookup(fpc_ratio_alloc, _FIOAA_X, _FIOAA_Y)
@@ -187,7 +192,7 @@ class AgricultureSector:
         # ── FIALD split (land dev vs agricultural inputs) ─────────────
         # AIPH from current smoothed CAI (FALM applied below). Use CAI for
         # AIPH calc in marginal-productivity step (productive share only).
-        falm_x = prev_fpc / self.sfpc
+        falm_x = prev_fpc / sfpc
         falm = table_lookup(falm_x, _FALM_X, _FALM_Y)
         ai_productive = cai * (1.0 - falm)
         aiph = ai_productive / max(al, 1.0)
@@ -345,6 +350,7 @@ class AgricultureSector:
             "soc_resilience_multiplier",
             "agriculture_tech_mult",
             "trade_food_loss",
+            "sfpc",
         ]
 
     def declares_writes(self) -> list[str]:

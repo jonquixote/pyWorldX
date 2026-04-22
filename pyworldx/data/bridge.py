@@ -195,6 +195,12 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "engine_var": "food_per_capita",
         "unit": "kcal_per_capita_per_day",
         "nrmsd_method": "change_rate",
+        "source_priority": [
+            "owid_daily_caloric_supply",
+            "faostat_food_balance",
+            "faostat_food_balance_historical",
+        ],
+        "description": "OWID is authoritative; FBS recent data is fallback; FBSH has corrupt rows.",
     },
     "pollution_index_relative": {
         "engine_var": "PPOLX",
@@ -473,6 +479,21 @@ class DataBridge:
             if df is None or df.empty:
                 continue
 
+            # When source_priority is defined and df has a source_id column,
+            # keep only rows from the highest-priority source available per year.
+            # This prevents mixing corrupted rows from low-priority sources
+            # with valid rows from high-priority sources.
+            if source_priority and df is not None and "source_id" in df.columns:
+                priority_order = {sid: idx for idx, sid in enumerate(source_priority)}
+                df = df.copy()
+                df["_src_rank"] = df["source_id"].map(
+                    lambda s: priority_order.get(s, len(source_priority))
+                )
+                df = df.sort_values(["year", "_src_rank"]).drop_duplicates(
+                    subset=["year"], keep="first"
+                )
+                df = df.drop(columns=["_src_rank"])
+
             if sector is not None and entry.get("engine_var") != sector:
                 pass
 
@@ -700,7 +721,7 @@ class DataBridge:
             mask = (target.years >= start_year) & (target.years <= end_year)
             years = target.years[mask]
             values = target.values[mask]
-            if len(years) < 3:
+            if len(years) < 2:
                 continue
             clipped.append(
                 CalibrationTarget(

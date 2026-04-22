@@ -143,14 +143,19 @@ def test_empirical_report_has_validation_fields() -> None:
 
 
 def test_clip_targets_drops_short_windows() -> None:
-    """_clip_targets_to_window must drop targets with < 3 points after clipping."""
+    """_clip_targets_to_window must drop targets with < 2 points after clipping."""
     bridge = DataBridge(normalize=False)
-    # Target has only 2 years in the window [2028, 2029]
     years = np.arange(1970, 2030, dtype=int)
     values = np.ones(len(years), dtype=float)
     target = _make_target(years=years, values=values)
+
+    # 1-point window must be dropped
+    clipped = bridge._clip_targets_to_window([target], start_year=2029, end_year=2029)
+    assert len(clipped) == 0, "Target with 1 point after clip must be dropped"
+
+    # 2-point window is valid for holdout NRMSD
     clipped = bridge._clip_targets_to_window([target], start_year=2028, end_year=2029)
-    assert len(clipped) == 0, "Target with 2 points after clip must be dropped"
+    assert len(clipped) == 1, "Target with 2 points after clip should be kept"
 
 
 def test_overfit_flagged_when_validation_degrades() -> None:
