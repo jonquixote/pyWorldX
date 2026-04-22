@@ -61,3 +61,5 @@ Thumbs.db
 !/README.md
 !/pyWorldX_spec_0.2.9.0.md
 !/latest.md
+
+tests.out
