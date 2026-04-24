@@ -359,10 +359,6 @@ def test_agriculture_runner_accepts_frozen_pop_and_capital() -> None:
 
 def test_agriculture_calibration_frozen_params_preserved_in_report() -> None:
     """T2-3: frozen pop+capital params must appear unchanged after ag calibration."""
-    from pyworldx.calibration.parameters import (
-        ParameterRegistry,
-        build_world3_parameter_registry,
-    )
 
     pop_params = {
         "population.len_scale": 1.0,
@@ -566,4 +562,245 @@ def test_agriculture_calibration_nrmsd_gate() -> None:
     }
     ag_json = output_dir / "agriculture.json"
     ag_json.write_text(json.dumps(ag_params, indent=2) + "\n")
+
+
+# ── T2-4: Resources sector ───────────────────────────────────────────
+
+
+def test_resources_entity_map_has_nr_with_change_rate() -> None:
+    """T2-4: NR entity must use change_rate NRMSD method."""
+    nr_entries = [
+        (k, e)
+        for k, e in ENTITY_TO_ENGINE_MAP.items()
+        if e.get("engine_var") == "NR"
+    ]
+    assert nr_entries, "No NR engine_var in ENTITY_TO_ENGINE_MAP"
+    for key, entry in nr_entries:
+        method = entry.get("nrmsd_method", "direct")
+        assert method == "change_rate", (
+            f"Entity '{key}' maps to NR but uses nrmsd_method='{method}'. "
+            "Resources are slope-dominated — must use 'change_rate'."
+        )
+
+
+def test_world3_nr_reference_not_in_engine_map() -> None:
+    """T2-4: world3.nr_fraction must be in WORLD3_NAMESPACE, not ENTITY_TO_ENGINE_MAP."""
+    from pyworldx.data.bridge import WORLD3_NAMESPACE
+
+    # world3 NR reference must NOT be in the calibration target map
+    forbidden = [
+        k for k in ENTITY_TO_ENGINE_MAP
+        if "world3_reference" in k and "nr" in k.lower()
+    ]
+    assert forbidden == [], (
+        f"world3_reference NR entries still in ENTITY_TO_ENGINE_MAP: {forbidden}. "
+        "Circular calibration — these must be in WORLD3_NAMESPACE only."
+    )
+
+    # It should be properly namespaced
+    assert "world3.nr_fraction" in WORLD3_NAMESPACE, (
+        "world3.nr_fraction not in WORLD3_NAMESPACE"
+    )
+
+
+def test_resources_runner_accepts_frozen_pop_capital_agriculture() -> None:
+    """T2-4: EmpiricalCalibrationRunner accepts pop+capital+agriculture frozen params."""
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    ag_params = {
+        "agriculture.initial_al": 9.0e8,
+        "agriculture.sfpc": 230.0,
+    }
+    frozen = {**pop_params, **cap_params, **ag_params}
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+    assert runner.frozen_params == frozen
+
+
+def test_resources_calibration_frozen_params_preserved_in_report() -> None:
+    """T2-4: frozen pop+capital+agriculture params must appear unchanged after resources calibration."""
+
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    ag_params_frozen = {
+        "agriculture.initial_al": 9.0e8,
+        "agriculture.sfpc": 230.0,
+    }
+    frozen = {**pop_params, **cap_params, **ag_params_frozen}
+
+    args = SimpleNamespace(sector="resources", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("resources")
+
+    defaults = registry.get_defaults()
+    traj, time = engine_factory(defaults)
+    synthetic_targets = [
+        CalibrationTarget(
+            variable_name="NR",
+            years=np.array([1970, 1980, 1990, 2000, 2010], dtype=int),
+            values=np.interp([1970, 1980, 1990, 2000, 2010], time, traj["NR"]) * 0.98,
+            unit="resource_units",
+            weight=1.0,
+            source="synthetic",
+            nrmsd_method="change_rate",
+        )
+    ]
+
+    cfg = CrossValidationConfig(
+        train_start=1970,
+        train_end=2000,
+        validate_start=2000,
+        validate_end=2010,
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+        runner.load_targets = lambda _w=None: synthetic_targets  # type: ignore[method-assign]
+
+        report = runner.run(
+            registry=registry,
+            engine_factory=engine_factory,
+            weights={"NR": 1.0},
+            cross_val_config=cfg,
+            morris_trajectories=2,
+            sobol_samples=16,
+        )
+
+    assert report.converged is True
+    assert report.train_result is not None
+    assert math.isfinite(report.train_result.composite_nrmsd)
+
+    # Frozen params must be preserved exactly
+    for param, expected_val in frozen.items():
+        actual = report.calibrated_parameters.get(param)
+        assert actual == expected_val, (
+            f"Frozen param '{param}' modified: expected {expected_val}, got {actual}"
+        )
+
+    # Resources params must be present
+    assert "resources.initial_nr" in report.calibrated_parameters
+
+
+@pytest.mark.slow
+def test_resources_calibration_nrmsd_gate() -> None:
+    """T2-4 gate: real-data resources calibration.
+
+    Resources must converge to a finite NRMSD using change_rate method.
+    This test runs the full optimizer with frozen population, capital,
+    and agriculture parameters.
+    """
+    aligned = (
+        Path(__file__).parent.parent.parent
+        / "data_pipeline"
+        / "data"
+        / "aligned"
+    )
+    # Check for any resource-related parquet file
+    resource_parquets = list(aligned.glob("*resource*")) + list(aligned.glob("*energy*"))
+    if not aligned.exists() or not resource_parquets:
+        pytest.skip(
+            "No aligned resource parquet data — run: python -m data_pipeline run"
+        )
+
+    # Load frozen params from previous sectors
+    pop_json = (
+        Path(__file__).parent.parent.parent
+        / "output"
+        / "calibrated_params"
+        / "population.json"
+    )
+    cap_json = (
+        Path(__file__).parent.parent.parent
+        / "output"
+        / "calibrated_params"
+        / "capital.json"
+    )
+    ag_json_path = (
+        Path(__file__).parent.parent.parent
+        / "output"
+        / "calibrated_params"
+        / "agriculture.json"
+    )
+    frozen_params: dict[str, float] = {}
+    for param_json in [pop_json, cap_json, ag_json_path]:
+        if param_json.exists():
+            raw = json.loads(param_json.read_text())
+            frozen_params.update(
+                {k: float(v) for k, v in raw.items() if not k.startswith("_")}
+            )
+
+    args = SimpleNamespace(sector="resources", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("resources")
+
+    cfg = CrossValidationConfig()  # train 1970–2010, validate 2010–2023
+
+    runner = EmpiricalCalibrationRunner(
+        aligned_dir=aligned, frozen_params=frozen_params
+    )
+    report = runner.run(
+        registry=registry,
+        engine_factory=engine_factory,
+        weights={"NR": 1.0},
+        cross_val_config=cfg,
+        morris_trajectories=5,
+        sobol_samples=64,
+    )
+
+    assert report.train_result is not None, "No train result — data pipeline issue"
+    nrmsd = report.train_result.composite_nrmsd
+    assert math.isfinite(nrmsd), "train NRMSD is NaN/inf — upstream data issue"
+    assert nrmsd < 0.40, (
+        f"Resources train NRMSD={nrmsd:.4f} exceeds 0.40 — "
+        "calibration failed. Check resource parquet data and entity mapping."
+    )
+    if report.validation_nrmsd is not None and math.isfinite(report.validation_nrmsd):
+        assert report.validation_nrmsd < nrmsd * 3.0, (
+            f"Validation NRMSD ({report.validation_nrmsd:.4f}) >3x train "
+            f"({nrmsd:.4f}) — severe overfitting."
+        )
+
+    # Write calibrated params
+    output_dir = (
+        Path(__file__).parent.parent.parent / "output" / "calibrated_params"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    res_params = {
+        k: v for k, v in report.calibrated_parameters.items()
+        if k.startswith("resources.")
+    }
+    res_params["_calibration_notes"] = {  # type: ignore[assignment]
+        "status": "calibrated",
+        "train_nrmsd": float(nrmsd),
+        "data_sources": ["bp_statistical_review", "usgs_mineral_production"],
+        "frozen_sectors": ["population", "capital", "agriculture"],
+        "nrmsd_method": "change_rate",
+        "date": "2026-04-24",
+    }
+    res_json = output_dir / "resources.json"
+    res_json.write_text(json.dumps(res_params, indent=2) + "\n")
 
