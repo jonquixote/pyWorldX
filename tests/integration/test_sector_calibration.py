@@ -2,6 +2,9 @@
 
 T2-1: Population sector calibration (gate: train NRMSD < 0.45)
 T2-2: Capital sector calibration with frozen population params (gate: train NRMSD < 0.35)
+T2-3: Agriculture sector calibration with frozen pop+capital (gate: train NRMSD < 0.35)
+T2-4: Resources sector calibration with frozen pop+capital+ag (gate: train NRMSD < 0.40)
+T2-5: Pollution sector calibration with frozen pop+capital+ag+resources (gate: train NRMSD < 0.30)
 """
 from __future__ import annotations
 
@@ -803,4 +806,321 @@ def test_resources_calibration_nrmsd_gate() -> None:
     }
     res_json = output_dir / "resources.json"
     res_json.write_text(json.dumps(res_params, indent=2) + "\n")
+
+
+# ── T2-5: Pollution and Climate sector ────────────────────────────────
+
+
+def test_pollution_entity_map_has_pollution_index_with_change_rate() -> None:
+    """T2-5: pollution_index entity must use change_rate NRMSD method."""
+    ppolx_entries = [
+        (k, e)
+        for k, e in ENTITY_TO_ENGINE_MAP.items()
+        if e.get("engine_var") == "pollution_index"
+    ]
+    assert ppolx_entries, "No pollution_index engine_var in ENTITY_TO_ENGINE_MAP"
+    for key, entry in ppolx_entries:
+        method = entry.get("nrmsd_method", "direct")
+        assert method == "change_rate", (
+            f"Entity '{key}' maps to pollution_index but uses nrmsd_method='{method}'. "
+            "Pollution is slope-dominated — must use 'change_rate'."
+        )
+
+
+def test_pollution_co2_ppm_excluded_from_objective() -> None:
+    """T2-5: atmospheric_co2_ppm must be excluded from the default objective.
+
+    CO2 in ppm cannot share the same objective as dimensionless PPOLX
+    without a unit conversion. It is tagged excluded_from_objective=True.
+    """
+    entry = ENTITY_TO_ENGINE_MAP.get("atmospheric_co2_ppm")
+    assert entry is not None, "atmospheric_co2_ppm not in ENTITY_TO_ENGINE_MAP"
+    assert entry.get("excluded_from_objective") is True, (
+        "atmospheric_co2_ppm must have excluded_from_objective=True. "
+        "Unit mismatch with dimensionless PPOLX — add ppm→index conversion before enabling."
+    )
+    assert entry.get("unit_mismatch") is True, (
+        "atmospheric_co2_ppm should be tagged unit_mismatch=True"
+    )
+
+
+def test_world3_pollution_reference_not_in_engine_map() -> None:
+    """T2-5: world3.pollution_index must be in WORLD3_NAMESPACE, not ENTITY_TO_ENGINE_MAP."""
+    from pyworldx.data.bridge import WORLD3_NAMESPACE
+
+    forbidden = [
+        k for k in ENTITY_TO_ENGINE_MAP
+        if "world3_reference" in k and "pollut" in k.lower()
+    ]
+    assert forbidden == [], (
+        f"world3_reference pollution entries in ENTITY_TO_ENGINE_MAP: {forbidden}. "
+        "Circular calibration — these must be in WORLD3_NAMESPACE only."
+    )
+
+    assert "world3.pollution_index" in WORLD3_NAMESPACE, (
+        "world3.pollution_index not in WORLD3_NAMESPACE"
+    )
+
+
+def test_ceds_aligned_data_has_global_rows() -> None:
+    """T2-5: Each CEDS-derived aligned file must contain global rows (one per year).
+
+    The engine is a global model — country-level rows would crash calibration.
+    """
+    aligned_dir = (
+        Path(__file__).parent.parent.parent
+        / "data_pipeline"
+        / "data"
+        / "aligned"
+    )
+    if not aligned_dir.is_dir():
+        pytest.skip("No aligned data directory — run pipeline first")
+
+    ceds_species = ["emissions_so2", "emissions_nox", "emissions_bc",
+                    "emissions_oc", "emissions_co", "emissions_nh3",
+                    "emissions_nmvoc"]
+    found_any = False
+    for species in ceds_species:
+        path = aligned_dir / f"{species}.parquet"
+        if not path.exists():
+            continue
+        found_any = True
+        import pandas as pd
+        df = pd.read_parquet(path)
+
+        # Must not have country-level subdivision
+        if "country_code" in df.columns:
+            countries = df["country_code"].unique()
+            assert len(countries) <= 1 or set(countries) <= {"WLD", "World"}, (
+                f"{species} has country-level rows: {list(countries[:5])}. "
+                "CEDS data must be globally aggregated before alignment."
+            )
+
+        # Must have at most one row per year
+        if "year" in df.columns:
+            dupes = df[df.duplicated(subset=["year"], keep=False)]
+            assert dupes.empty, (
+                f"{species} has duplicate year rows: years {sorted(dupes['year'].unique()[:5])}. "
+                "Should be exactly one global row per year."
+            )
+
+    if not found_any:
+        pytest.skip("No CEDS aligned files found — run pipeline first")
+
+
+def test_pollution_runner_accepts_frozen_pop_capital_agriculture_resources() -> None:
+    """T2-5: EmpiricalCalibrationRunner accepts 4-sector frozen params."""
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    ag_params = {
+        "agriculture.initial_al": 9.0e8,
+        "agriculture.initial_land_fertility": 600.0,
+        "agriculture.land_development_rate": 0.005,
+        "agriculture.sfpc": 230.0,
+    }
+    res_params = {
+        "resources.initial_nr": 1.0e12,
+        "resources.policy_year": 4000.0,
+    }
+    frozen = {**pop_params, **cap_params, **ag_params, **res_params}
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+    assert runner.frozen_params == frozen
+
+
+def test_pollution_calibration_frozen_params_preserved_in_report() -> None:
+    """T2-5: frozen pop+capital+ag+resources params must appear unchanged after pollution calibration."""
+
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    ag_params_frozen = {
+        "agriculture.initial_al": 9.0e8,
+        "agriculture.initial_land_fertility": 600.0,
+        "agriculture.land_development_rate": 0.005,
+        "agriculture.sfpc": 230.0,
+    }
+    res_params_frozen = {
+        "resources.initial_nr": 1.0e12,
+        "resources.policy_year": 4000.0,
+    }
+    frozen = {**pop_params, **cap_params, **ag_params_frozen, **res_params_frozen}
+
+    args = SimpleNamespace(sector="pollution", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("pollution")
+
+    defaults = registry.get_defaults()
+    traj, time = engine_factory(defaults)
+    synthetic_targets = [
+        CalibrationTarget(
+            variable_name="pollution_index",
+            years=np.array([1970, 1980, 1990, 2000, 2010], dtype=int),
+            values=np.interp(
+                [1970, 1980, 1990, 2000, 2010], time,
+                traj["pollution_index"],
+            ) * 0.98,
+            unit="dimensionless",
+            weight=1.0,
+            source="synthetic",
+            nrmsd_method="change_rate",
+        )
+    ]
+
+    cfg = CrossValidationConfig(
+        train_start=1970,
+        train_end=2000,
+        validate_start=2000,
+        validate_end=2010,
+    )
+
+    with tempfile.TemporaryDirectory() as td:
+        runner = EmpiricalCalibrationRunner(
+            aligned_dir=Path(td),
+            frozen_params=frozen,
+        )
+        runner.load_targets = lambda _w=None: synthetic_targets  # type: ignore[method-assign]
+
+        report = runner.run(
+            registry=registry,
+            engine_factory=engine_factory,
+            weights={"pollution_index": 1.0},
+            cross_val_config=cfg,
+            morris_trajectories=2,
+            sobol_samples=16,
+        )
+
+    assert report.converged is True
+    assert report.train_result is not None
+    assert math.isfinite(report.train_result.composite_nrmsd)
+
+    # Frozen params must be preserved exactly
+    for param, expected_val in frozen.items():
+        actual = report.calibrated_parameters.get(param)
+        assert actual == expected_val, (
+            f"Frozen param '{param}' modified: expected {expected_val}, got {actual}"
+        )
+
+    # Pollution params must be present
+    assert any(
+        k.startswith("pollution.") for k in report.calibrated_parameters
+    ), "No pollution.* params in calibrated_parameters"
+
+
+@pytest.mark.slow
+def test_pollution_calibration_nrmsd_gate() -> None:
+    """T2-5 gate: real-data pollution calibration.
+
+    Pollution must converge to a finite NRMSD using change_rate method.
+    This test runs the full optimizer with frozen population, capital,
+    agriculture, and resources parameters.
+    """
+    aligned = (
+        Path(__file__).parent.parent.parent
+        / "data_pipeline"
+        / "data"
+        / "aligned"
+    )
+    if not aligned.is_dir():
+        pytest.skip("No aligned data — run pipeline first")
+
+    # Check for pollution-related aligned data
+    has_pollution_data = any(
+        (aligned / f).exists()
+        for f in ["pollution_index_relative.parquet", "emissions_co2_fossil.parquet"]
+    )
+    if not has_pollution_data:
+        pytest.skip("No pollution aligned parquet — run pipeline first")
+
+    pop_params = {
+        "population.len_scale": 1.0,
+        "population.mtfn_scale": 1.0,
+        "population.initial_population": 1.65e9,
+    }
+    cap_params = {
+        "capital.initial_ic": 2.1e11,
+        "capital.icor": 3.0,
+        "capital.alic": 14.0,
+        "capital.alsc": 20.0,
+    }
+    ag_params_frozen = {
+        "agriculture.initial_al": 9.0e8,
+        "agriculture.initial_land_fertility": 600.0,
+        "agriculture.land_development_rate": 0.005,
+        "agriculture.sfpc": 230.0,
+    }
+    res_params_frozen = {
+        "resources.initial_nr": 1.0e12,
+        "resources.policy_year": 4000.0,
+    }
+    frozen = {**pop_params, **cap_params, **ag_params_frozen, **res_params_frozen}
+
+    args = SimpleNamespace(sector="pollution", params=None)
+    registry, _ = _resolve_registry(args)
+    engine_factory = build_sector_engine_factory("pollution")
+
+    report = EmpiricalCalibrationRunner(
+        aligned_dir=aligned,
+        frozen_params=frozen,
+    ).run(
+        registry=registry,
+        engine_factory=engine_factory,
+        weights={"pollution_index": 1.0, "pollution_generation": 0.5},
+        cross_val_config=CrossValidationConfig(),
+        morris_trajectories=5,
+        sobol_samples=64,
+    )
+
+    assert report.train_result is not None, "No train result — data pipeline issue"
+    nrmsd = report.train_result.composite_nrmsd
+    assert math.isfinite(nrmsd), "train NRMSD is NaN/inf — upstream data issue"
+    assert nrmsd < 0.30, (
+        f"Pollution train NRMSD={nrmsd:.4f} exceeds 0.30 — "
+        "calibration failed. Check pollution parquet data and entity mapping."
+    )
+    if report.validation_nrmsd is not None and math.isfinite(report.validation_nrmsd):
+        assert report.validation_nrmsd < nrmsd * 3.0, (
+            f"Validation NRMSD ({report.validation_nrmsd:.4f}) >3x train "
+            f"({nrmsd:.4f}) — severe overfitting."
+        )
+
+    # Write calibrated params
+    output_dir = (
+        Path(__file__).parent.parent.parent / "output" / "calibrated_params"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pol_params = {
+        k: v for k, v in report.calibrated_parameters.items()
+        if k.startswith("pollution.")
+    }
+    pol_params["_calibration_notes"] = {  # type: ignore[assignment]
+        "status": "calibrated",
+        "train_nrmsd": float(nrmsd),
+        "data_sources": ["noaa_co2", "gcp_fossil_emissions", "ceds"],
+        "frozen_sectors": ["population", "capital", "agriculture", "resources"],
+        "nrmsd_method": "change_rate",
+        "date": "2026-04-24",
+    }
+    pol_json = output_dir / "pollution.json"
+    pol_json.write_text(json.dumps(pol_params, indent=2) + "\n")
 

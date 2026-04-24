@@ -203,7 +203,7 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "description": "OWID is authoritative; FBS recent data is fallback; FBSH has corrupt rows.",
     },
     "pollution_index_relative": {
-        "engine_var": "PPOLX",
+        "engine_var": "pollution_index",
         "unit": "dimensionless",
         "nrmsd_method": "change_rate",
         "description": "Dimensionless persistent pollution index.",

@@ -536,8 +536,14 @@ def build_sector_engine_factory(
             setattr(res_sector, "initial_nr", short_params["initial_nr"])
 
         # Pollution sector
-        if "initial_ppol" in short_params:
-            setattr(pol_sector, "initial_ppol", short_params["initial_ppol"])
+        _POL_MAP = {
+            "initial_ppol": "initial_ppol",
+            "ahl70": "ahl70",
+            "pptd": "pptd",
+        }
+        for short_key, attr_name in _POL_MAP.items():
+            if short_key in short_params:
+                setattr(pol_sector, attr_name, short_params[short_key])
 
         engine = Engine(
             sectors=[
@@ -791,7 +797,7 @@ if __name__ == "__main__":
         "population": {"POP"},
         "capital":    {"IC", "SC", "industrial_output", "industrial_output_per_capita"},
         "agriculture": {"AL", "food_per_capita"},
-        "pollution":  {"PPOLX", "pollution_generation", "C_atm_ppm"},
+        "pollution":  {"pollution_index", "pollution_generation", "C_atm_ppm"},
         "resources":  {"NR", "resource_extraction_index", "reserve_depletion_ratio"},
     }
     sector_engine_vars = _SECTOR_ENGINE_VARS.get(args.sector, set())
