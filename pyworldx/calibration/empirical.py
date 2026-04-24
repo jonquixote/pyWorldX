@@ -680,22 +680,16 @@ if __name__ == "__main__":
 
     train_start, train_end = _parse_window(args.train_window, "train-window")
 
-    validate_start: Optional[int] = None
-    validate_end: Optional[int] = None
-    if args.holdout_window:
-        validate_start, validate_end = _parse_window(
-            args.holdout_window, "holdout-window"
-        )
-
     # ── Build CrossValidationConfig ──────────────────────────────────
     cfg = None
     if args.holdout_window:
+        val_start, val_end = _parse_window(args.holdout_window, "holdout-window")
         try:
             cfg = CrossValidationConfig(
                 train_start=train_start,
                 train_end=train_end,
-                validate_start=validate_start,
-                validate_end=validate_end,
+                validate_start=val_start,
+                validate_end=val_end,
             )
         except ValueError as e:
             parser.error(str(e))
@@ -757,7 +751,6 @@ if __name__ == "__main__":
         # full 17-param registry causes it to drift all sectors while the
         # requested params sit at their defaults unchanged.
         from pyworldx.calibration.parameters import (
-            ParameterEntry,
             build_world3_parameter_registry,
         )
         full_registry = build_world3_parameter_registry()

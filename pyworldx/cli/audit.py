@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from pyworldx.calibration.metrics import CrossValidationConfig
-from pyworldx.data.bridge import ENTITY_TO_ENGINE_MAP, DataBridge, DataBridgeError
+from pyworldx.data.bridge import DataBridge, DataBridgeError
 
 
 def _build_audit_report(bridge: DataBridge) -> list[dict[str, str]]:
