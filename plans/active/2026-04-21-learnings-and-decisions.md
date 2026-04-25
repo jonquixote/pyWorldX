@@ -1,6 +1,6 @@
-# Phase 2 Calibration: Learnings and Decisions (T2-1 → T2-5)
+# Calibration Engine: Learnings and Decisions (T2-1 → T4-1)
 
-As we have progressed through the first half of Phase 2 (Population, Capital, and Agriculture sector calibrations), we encountered several deep structural challenges regarding how empirical data maps to a system dynamics engine. 
+As we have progressed through the full Phase 2 sequential calibration (Population, Capital, Agriculture, Resources, Pollution) and into Phase 3 joint calibration, we encountered several deep structural challenges regarding how empirical data maps to a system dynamics engine.
 
 Here is a summary of the key learnings and architectural decisions we have made to resolve them.
 
@@ -75,3 +75,23 @@ We must freeze *all* parameters outside the sector being calibrated. We verified
 
 **The Learning:**
 When running a sequential calibration on a single downstream sector, the `frozen_params` dictionary must strictly encompass the complete universe of parameters from all upstream sectors. If any are missed, the optimizer will attempt to drift them, leading to mathematical instability (`NaN`).
+
+## 8. Composite Mode: Self-Contained Joint Calibration
+**The Problem:**
+After completing all 5 sequential sector calibrations (T2-1 → T2-5), the next step (T3-1) requires joint multi-sector optimisation over the 5–6 most influential cross-sector parameters simultaneously. The existing `EmpiricalCalibrationRunner.run()` required external `registry` and `engine_factory` arguments, tightly coupling it to the single-sector CLI workflow.
+
+**The Decision:**
+We added a `composite: bool = False` flag to `EmpiricalCalibrationRunner`. When `True`, the runner becomes fully self-contained: it builds its own registry from all 5 sectors, constructs the engine factory internally, applies mandated composite weights (`population=1.5, co2=1.5, food_per_capita=1.0, industrial_capital=1.0, resources=0.75`), and delegates to `_run_optimizer()` — a dedicated method that wraps the calibration pipeline and is easily patchable for fast unit tests.
+
+**The Learning:**
+Separating the optimiser invocation into a distinct `_run_optimizer()` method enables test-driven development without Optuna overhead. The composite/single-sector split keeps the existing sequential workflow untouched while opening the door to joint fine-tuning.
+
+## 9. Regression Baselines: Graceful Degradation Guards
+**The Problem:**
+After calibrating across all sectors, there is no mechanism to detect if a future code change silently degrades NRMSD scores. A seemingly innocent refactor could worsen a sector's fit by 10–20% without anyone noticing until a full calibration re-run.
+
+**The Decision:**
+We introduced `output/calibration_baseline.json` as a machine-readable manifest recording `optimized_params`, `sector_nrmsd`, `composite_train_nrmsd`, `composite_validation_nrmsd`, and `overfit_flagged`. Three regression tests in `test_regression.py` validate against this manifest with a 5% tolerance gate. All three tests skip gracefully when the baseline or aligned data directory is absent, making them safe for CI before the first real calibration.
+
+**The Learning:**
+The `quick_evaluate()` method needed a new return type (`QuickEvaluateResult`) with a `sector_nrmsd` dict rather than the raw `BridgeResult`. This decouples the regression API from internal bridge internals and makes the test contract explicit. Seeding the manifest with Nebel 2023 upper bounds provides a conservative starting point that any real calibration will improve upon.
