@@ -48,11 +48,23 @@ class EmpiricalCalibrationReport:
 
     # Summary
     calibrated_parameters: dict[str, float] = field(default_factory=dict)
+    optimized_params: dict[str, float] = field(default_factory=dict)
     sector_trajectories: dict[str, dict[int, float]] = field(default_factory=dict)
     converged: bool = False
     total_evaluations: int = 0
+    train_nrmsd: Optional[float] = None
     validation_nrmsd: Optional[float] = None
     overfit_flagged: bool = False
+
+
+# Default composite objective weights (T3-1 contract)
+_COMPOSITE_WEIGHTS: dict[str, float] = {
+    "population": 1.5,
+    "co2": 1.5,
+    "food_per_capita": 1.0,
+    "industrial_capital": 1.0,
+    "resources": 0.75,
+}
 
 
 class EmpiricalCalibrationRunner:
@@ -60,22 +72,28 @@ class EmpiricalCalibrationRunner:
 
     Connects the data pipeline's aligned Parquet store to the engine's
     calibration system via the DataBridge.
+
+    When ``composite=True``, the runner operates in joint multi-sector mode:
+    it builds its own registry + engine factory internally and optimizes a
+    weighted composite objective across all 5 World3 sectors.
     """
 
     def __init__(
         self,
-        aligned_dir: Path,
+        aligned_dir: Optional[Path] = None,
         reference_connector: Optional[Any] = None,
         usgs_data_dir: Optional[Path] = None,
         reference_year: Optional[int] = None,
         normalize: bool = True,
         entity_map: Optional[dict[str, Any]] = None,
         frozen_params: Optional[dict[str, float]] = None,
+        composite: bool = False,
     ) -> None:
         """Initialize the runner.
 
         Args:
-            aligned_dir: Path to data_pipeline/data/aligned/
+            aligned_dir: Path to data_pipeline/data/aligned/.
+                Defaults to ``output/aligned`` when *composite* is True.
             reference_connector: Optional World3ReferenceConnector for Layer 1
             usgs_data_dir: Path to USGS data directory for Layer 3.
                 Defaults to data_pipeline/data/usgs/
@@ -86,8 +104,15 @@ class EmpiricalCalibrationRunner:
             frozen_params: Parameters held fixed during optimization (e.g. previously
                 calibrated sector params). These are merged into calibrated_parameters
                 in the report but never varied by the optimizer.
+            composite: If True, run joint multi-sector calibration with
+                weighted composite objective (T3-1).
         """
         from pyworldx.calibration.metrics import CrossValidationConfig
+
+        self.composite = composite
+
+        if aligned_dir is None:
+            aligned_dir = Path("output/aligned")
 
         resolved_ref_year = (
             reference_year
@@ -103,6 +128,42 @@ class EmpiricalCalibrationRunner:
             normalize=normalize,
             entity_map=entity_map or ENTITY_TO_ENGINE_MAP,
         )
+
+    # ── Composite-mode helpers (T3-1) ────────────────────────────────
+
+    def get_objective_weights(self) -> dict[str, float]:
+        """Return the composite objective weights.
+
+        Default weights (T3-1 contract)::
+
+            population=1.5, co2=1.5, food_per_capita=1.0,
+            industrial_capital=1.0, resources=0.75
+        """
+        return dict(_COMPOSITE_WEIGHTS)
+
+    def _run_optimizer(
+        self,
+        objective_fn: Callable[[dict[str, float]], float],
+        registry: ParameterRegistry,
+        cross_val_config: Optional[CrossValidationConfig] = None,
+        bayesian_n_trials: int = 100,
+        seed: int = 42,
+    ) -> dict[str, float]:
+        """Run the full calibration pipeline and return optimized parameters.
+
+        This is the primary optimisation entry-point.  It is separated from
+        ``run()`` so that tests can patch it to avoid real Optuna trials.
+        """
+        pipeline_report = run_calibration_pipeline(
+            objective_fn=objective_fn,
+            registry=registry,
+            cross_val_config=cross_val_config,
+            bayesian_n_trials=bayesian_n_trials,
+            seed=seed,
+        )
+        if pipeline_report.calibration is not None:
+            return pipeline_report.calibration.parameters
+        return registry.get_defaults()
 
     def load_targets(
         self,
@@ -229,18 +290,37 @@ class EmpiricalCalibrationRunner:
 
     def run(
         self,
-        registry: ParameterRegistry,
-        engine_factory: Callable[
-            [dict[str, float]],
-            tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
-        ],
+        registry: Optional[ParameterRegistry] = None,
+        engine_factory: Optional[
+            Callable[
+                [dict[str, float]],
+                tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
+            ]
+        ] = None,
         weights: Optional[dict[str, float]] = None,
         cross_val_config: Optional[CrossValidationConfig] = None,
         morris_trajectories: int = 10,
         sobol_samples: int = 256,
         seed: int = 42,
     ) -> EmpiricalCalibrationReport:
-        """Execute the full empirical calibration pipeline."""
+        """Execute the full empirical calibration pipeline.
+
+        In **composite mode** (``self.composite is True``), *registry* and
+        *engine_factory* are built internally from the full 5-sector
+        World3 model, weights come from ``get_objective_weights()``, and
+        a default ``CrossValidationConfig`` is used.
+        """
+        # ── Composite mode: build everything internally ──────────────
+        if self.composite:
+            return self._run_composite(seed=seed)
+
+        # ── Single-sector mode (original path) ───────────────────────
+        if registry is None or engine_factory is None:
+            raise TypeError(
+                "registry and engine_factory are required in single-sector mode. "
+                "Pass composite=True for joint multi-sector calibration."
+            )
+
         report = EmpiricalCalibrationReport()
 
         targets = self.load_targets(weights)
@@ -304,7 +384,9 @@ class EmpiricalCalibrationRunner:
                 **pipeline_report.calibration.parameters,
                 **self.frozen_params,
             }
+            report.optimized_params = dict(report.calibrated_parameters)
             report.converged = pipeline_report.calibration.converged
+            report.train_nrmsd = pipeline_report.calibration.total_nrmsd
 
             try:
                 trajectories, time_index = active_engine_factory(report.calibrated_parameters)
@@ -348,9 +430,9 @@ class EmpiricalCalibrationRunner:
                 )
                 report.validation_nrmsd = val_result.composite_nrmsd
 
-                train_nrmsd = pipeline_report.calibration.total_nrmsd
-                if np.isfinite(val_result.composite_nrmsd) and train_nrmsd > 0.0:
-                    degradation = val_result.composite_nrmsd / train_nrmsd - 1.0
+                train_nrmsd_val = pipeline_report.calibration.total_nrmsd
+                if np.isfinite(val_result.composite_nrmsd) and train_nrmsd_val > 0.0:
+                    degradation = val_result.composite_nrmsd / train_nrmsd_val - 1.0
                     report.overfit_flagged = (
                         degradation > cross_val_config.overfit_threshold
                     )
@@ -362,6 +444,80 @@ class EmpiricalCalibrationRunner:
             usgs_result = self.cross_validate_usgs(active_engine_factory, final_params)
             if usgs_result is not None:
                 report.usgs_result = usgs_result
+
+        return report
+
+    def _run_composite(
+        self,
+        seed: int = 42,
+    ) -> EmpiricalCalibrationReport:
+        """Joint multi-sector calibration (T3-1).
+
+        Builds the full 5-sector engine factory, applies composite weights,
+        runs the optimizer, and computes independent validation NRMSD.
+        """
+        from pyworldx.calibration.parameters import build_world3_parameter_registry
+
+        report = EmpiricalCalibrationReport()
+        cross_val_config = CrossValidationConfig()
+
+        # Build registry from all sectors
+        registry = build_world3_parameter_registry()
+
+        # Build engine factory (all 5 sectors, no sector restriction)
+        engine_factory = build_sector_engine_factory("population")  # runs all 5
+
+        # Load targets with composite weights
+        composite_weights = self.get_objective_weights()
+        targets = self.load_targets(composite_weights)
+        report.empirical_targets_loaded = len(targets)
+
+        if not targets:
+            return report
+
+        # Build objective
+        objective = self.bridge.build_objective(
+            targets,
+            engine_factory,
+            train_start=cross_val_config.train_start,
+            train_end=cross_val_config.train_end,
+        )
+
+        # Run optimizer (patchable for tests)
+        optimized_params = self._run_optimizer(
+            objective_fn=objective,
+            registry=registry,
+            cross_val_config=cross_val_config,
+            seed=seed,
+        )
+        report.optimized_params = optimized_params
+        report.calibrated_parameters = optimized_params
+
+        # Compute train NRMSD on the optimized params
+        report.train_nrmsd = objective(optimized_params)
+
+        # Compute independent validation NRMSD on holdout window
+        val_result = self.bridge.calculate_validation_score(
+            targets,
+            engine_factory,
+            optimized_params,
+            validate_start=cross_val_config.validate_start,
+            validate_end=cross_val_config.validate_end,
+        )
+        if isinstance(val_result, BridgeResult):
+            report.validation_nrmsd = val_result.composite_nrmsd
+        else:
+            report.validation_nrmsd = float(val_result)  # type: ignore[arg-type]
+
+        # Overfit detection
+        if (
+            report.train_nrmsd is not None
+            and report.validation_nrmsd is not None
+            and np.isfinite(report.validation_nrmsd)
+            and report.train_nrmsd > 0.0
+        ):
+            degradation = report.validation_nrmsd / report.train_nrmsd - 1.0
+            report.overfit_flagged = degradation > cross_val_config.overfit_threshold
 
         return report
 
