@@ -29,9 +29,9 @@ def test_atmospheric_co2_excluded_from_objective():
     )
 
 
-def test_pollution_index_maps_to_ppolx():
+def test_pollution_index_maps_to_pollution_index():
     entry = ENTITY_TO_ENGINE_MAP["pollution_index_relative"]
-    assert entry["engine_var"] == "PPOLX"
+    assert entry["engine_var"] == "pollution_index"
 
 
 def test_world3_pollution_index_namespaced():
