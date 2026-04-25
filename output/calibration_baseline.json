@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-04-25T10:45:00Z",
+  "recorded_at": "2026-04-25T21:19:46.145177+00:00",
   "optimized_params": {
     "population.len_scale": 1.0,
     "population.mtfn_scale": 1.0,
@@ -19,13 +19,14 @@
     "pollution.pptd": 111.8
   },
   "sector_nrmsd": {
-    "population": 0.019,
-    "industrial_output": 0.474,
-    "food_per_capita": 1.108,
-    "pollution": 0.337,
-    "nonrenewable_resources": 0.757
+    "POP": 0.5996431964883375,
+    "IC": 1.2788649102204988,
+    "industrial_output": 8.541771653237484,
+    "AL": 0.01971629513156414,
+    "food_per_capita": 2.1303933452466968,
+    "pollution_generation": 1.4016686419952038
   },
-  "composite_train_nrmsd": 0.2719,
-  "composite_validation_nrmsd": 0.30,
-  "overfit_flagged": false
+  "composite_train_nrmsd": 0.919754,
+  "composite_validation_nrmsd": 1.307411,
+  "overfit_flagged": true
 }
