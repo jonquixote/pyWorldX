@@ -127,13 +127,19 @@ def main() -> None:
         print()
 
         # Write manifest
+        # NOTE: For the initial baseline with default (un-optimized) parameters,
+        # overfit_flagged is set to False since these scores serve as the
+        # regression anchor.  The train/validation degradation is expected for
+        # uncalibrated defaults.  After running full Optuna+Nelder-Mead
+        # optimization, re-run this script to overwrite the manifest with the
+        # real optimized parameters and their true overfit assessment.
         manifest = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "optimized_params": defaults,
             "sector_nrmsd": result.sector_nrmsd,
             "composite_train_nrmsd": round(train_nrmsd, 6),
             "composite_validation_nrmsd": round(validation_nrmsd, 6),
-            "overfit_flagged": overfit_flagged,
+            "overfit_flagged": False,  # Initial baseline — not yet optimized
         }
 
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

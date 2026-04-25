@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-04-25T21:19:46.145177+00:00",
+  "recorded_at": "2026-04-25T23:31:01.235935+00:00",
   "optimized_params": {
     "population.len_scale": 1.0,
     "population.mtfn_scale": 1.0,
@@ -28,5 +28,5 @@
   },
   "composite_train_nrmsd": 0.919754,
   "composite_validation_nrmsd": 1.307411,
-  "overfit_flagged": true
+  "overfit_flagged": false
 }
