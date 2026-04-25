@@ -55,3 +55,23 @@ We separated the gates: raw ingestion (`load_targets`) remains at `< 3` to ensur
 
 **The Learning:**
 Cross-validation semantics require different length constraints than raw data ingestion.
+
+## 6. Mismatch Between Empirical Targets and Engine Keys
+**The Problem:**
+During the T2-5 Pollution sector calibration, the objective function returned `NaN` across all trials. This occurred because the empirical data target's variable name (`PPOLX`) was hardcoded in the `ENTITY_TO_ENGINE_MAP`, but the `PollutionSector` actually published its output under the trajectory key `pollution_index`. The `compare()` function silently skipped the variable since it couldn't find a matching engine trajectory.
+
+**The Decision:**
+We explicitly updated the entity map's `engine_var` to exactly match the internal sector output key (`pollution_index`).
+
+**The Learning:**
+Silent mismatches between target names and engine state keys will permanently break calibration by resulting in NaN objective values. 
+
+## 7. Complete Freezing of Upstream Sector Parameters
+**The Problem:**
+The T2-5 synthetic calibration tests failed because the optimizer was still exploring unbounded dimensions. The `frozen_params` dict in the test harness failed to include all parameters for the upstream Population, Capital, Agriculture, and Resources sectors (e.g., `initial_land_fertility`, `policy_year`). 
+
+**The Decision:**
+We must freeze *all* parameters outside the sector being calibrated. We verified the registry and ensured all 13 non-pollution parameters were properly included in the `frozen_params` dictionary during the T2-5 pollution calibration run.
+
+**The Learning:**
+When running a sequential calibration on a single downstream sector, the `frozen_params` dictionary must strictly encompass the complete universe of parameters from all upstream sectors. If any are missed, the optimizer will attempt to drift them, leading to mathematical instability (`NaN`).
