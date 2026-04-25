@@ -1,0 +1,31 @@
+{
+  "recorded_at": "2026-04-25T10:45:00Z",
+  "optimized_params": {
+    "population.len_scale": 1.0,
+    "population.mtfn_scale": 1.0,
+    "population.initial_population": 1650000000.0,
+    "capital.initial_ic": 210000000000.0,
+    "capital.icor": 3.0,
+    "capital.alic": 14.0,
+    "capital.alsc": 20.0,
+    "agriculture.initial_al": 900000000.0,
+    "agriculture.initial_land_fertility": 600.0,
+    "agriculture.land_development_rate": 0.005,
+    "agriculture.sfpc": 230.0,
+    "resources.initial_nr": 1000000000000.0,
+    "resources.policy_year": 4000.0,
+    "pollution.initial_ppol": 25000000.0,
+    "pollution.ahl70": 1.5,
+    "pollution.pptd": 111.8
+  },
+  "sector_nrmsd": {
+    "population": 0.019,
+    "industrial_output": 0.474,
+    "food_per_capita": 1.108,
+    "pollution": 0.337,
+    "nonrenewable_resources": 0.757
+  },
+  "composite_train_nrmsd": 0.2719,
+  "composite_validation_nrmsd": 0.30,
+  "overfit_flagged": false
+}

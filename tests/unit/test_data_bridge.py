@@ -491,8 +491,9 @@ class TestEmpiricalCalibrationRunner:
             entity_map={"population.total": {"engine_var": "POP", "unit": "persons", "nrmsd_method": "direct"}},
         )
         result = runner.quick_evaluate(_trivial_engine, {"scale": 1.0})
-        assert isinstance(result, BridgeResult)
-        assert result.n_targets >= 1
+        from pyworldx.calibration.empirical import QuickEvaluateResult
+        assert isinstance(result, QuickEvaluateResult)
+        assert len(result.sector_nrmsd) >= 1
 
     @pytest.mark.skipif(not _HAS_DUCKDB, reason="duckdb required for pipeline store")
     def test_run_no_targets_returns_empty_report(self, tmp_path, monkeypatch):

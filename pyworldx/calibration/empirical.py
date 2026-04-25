@@ -67,6 +67,17 @@ _COMPOSITE_WEIGHTS: dict[str, float] = {
 }
 
 
+@dataclass
+class QuickEvaluateResult:
+    """Result from a single forward-pass NRMSD evaluation (T4-1).
+
+    Returned by ``EmpiricalCalibrationRunner.quick_evaluate()``.
+    """
+
+    sector_nrmsd: dict[str, float]
+    composite_nrmsd: float
+
+
 class EmpiricalCalibrationRunner:
     """Runs calibration against empirical data.
 
@@ -523,17 +534,45 @@ class EmpiricalCalibrationRunner:
 
     def quick_evaluate(
         self,
-        engine_factory: Callable[
-            [dict[str, float]],
-            tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
-        ],
-        params: dict[str, float],
+        engine_factory: Optional[
+            Callable[
+                [dict[str, float]],
+                tuple[dict[str, np.ndarray[Any, Any]], np.ndarray[Any, Any]],
+            ]
+        ] = None,
+        params: Optional[dict[str, float]] = None,
         weights: Optional[dict[str, float]] = None,
-    ) -> BridgeResult:
-        """Quick NRMSD evaluation without full calibration."""
+    ) -> QuickEvaluateResult:
+        """Quick NRMSD evaluation without full calibration.
+
+        In **composite mode** (``self.composite is True``), only *params*
+        is required — the engine factory and composite weights are built
+        internally.
+
+        Returns:
+            QuickEvaluateResult with ``sector_nrmsd`` and
+            ``composite_nrmsd``.
+        """
+        if params is None:
+            params = {}
+
+        if self.composite:
+            engine_factory = build_sector_engine_factory("population")
+            weights = self.get_objective_weights()
+
+        if engine_factory is None:
+            raise TypeError(
+                "engine_factory is required in single-sector mode. "
+                "Pass composite=True for joint multi-sector evaluation."
+            )
+
         targets = self.load_targets(weights)
         trajectories, time_index = engine_factory(params)
-        return self.bridge.compare(targets, trajectories, time_index)
+        bridge_result = self.bridge.compare(targets, trajectories, time_index)
+        return QuickEvaluateResult(
+            sector_nrmsd=dict(bridge_result.per_variable_nrmsd),
+            composite_nrmsd=bridge_result.composite_nrmsd,
+        )
 
 
 def _resolve_registry(
