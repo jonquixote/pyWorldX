@@ -95,3 +95,13 @@ We introduced `output/calibration_baseline.json` as a machine-readable manifest 
 
 **The Learning:**
 The `quick_evaluate()` method needed a new return type (`QuickEvaluateResult`) with a `sector_nrmsd` dict rather than the raw `BridgeResult`. This decouples the regression API from internal bridge internals and makes the test contract explicit. Seeding the manifest with Nebel 2023 upper bounds provides a conservative starting point that any real calibration will improve upon.
+
+## 10. Industrial Output ≠ GDP: A Category Error, Not a Data Gap
+**The Problem:**
+The first full Optuna optimization (100 trials, 16.4 min) improved train NRMSD by only 2.8% and the optimizer could not move `industrial_output` NRMSD at all (8.5418 → 8.5418). This single variable accounted for ~65% of composite error and distorted gradients away from the five fittable sectors.
+
+**The Decision:**
+Excluded `gdp.current_usd` and `gdp.per_capita` from the calibration objective via `excluded_from_objective: True`. World3's `industrial_output` is a biophysical throughput metric (energy/materials flow); GDP measures market transactions including services, finance, and rent-seeking. The engine's IO is flat (~-0.03%/yr) while GDP compounds at 3-5%/yr. No parameter combination can reconcile structurally divergent trajectory shapes. Full rationale in `plans/active/uncertainties.md`.
+
+**The Learning:**
+When calibration reveals a variable that the optimizer cannot move across 100 Bayesian trials, it signals a **structural limitation**, not an under-explored parameter space. The correct response is exclusion with documentation, not more trials. The planned v2.0 modernisation (endogenous TFP, financial sector, service-sector value-added) is the structural path to making industrial output GDP-comparable.

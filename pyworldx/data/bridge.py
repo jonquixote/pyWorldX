@@ -164,11 +164,27 @@ ENTITY_TO_ENGINE_MAP: dict[str, EntityMapEntry] = {
         "engine_var": "industrial_output",
         "unit": "current_USD",
         "nrmsd_method": "change_rate",
+        "excluded_from_objective": True,
+        "description": (
+            "Excluded: World3 industrial_output is a biophysical throughput "
+            "metric (energy/materials flow), not an economic value metric. "
+            "GDP measures market transactions including services, finance, "
+            "and rent-seeking — none of which exist in World3. Engine IO is "
+            "flat (~-0.03%/yr) while GDP compounds at 3-5%/yr; no parameter "
+            "combination can reconcile structurally divergent trajectories. "
+            "See uncertainties.md for full rationale."
+        ),
     },
     "gdp.per_capita": {
         "engine_var": "industrial_output_per_capita",
         "unit": "constant_2015_USD_per_capita",
         "nrmsd_method": "change_rate",
+        "excluded_from_objective": True,
+        "description": (
+            "Excluded: same structural mismatch as gdp.current_usd. "
+            "World3 has no per-capita GDP concept; its output/capita "
+            "is a biophysical ratio, not an economic one."
+        ),
     },
     "arable_land": {
         "engine_var": "AL",
