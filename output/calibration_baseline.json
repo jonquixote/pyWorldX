@@ -1,15 +1,16 @@
 {
-  "recorded_at": "2026-04-26T00:59:51.943094+00:00",
+  "recorded_at": "2026-04-26T07:56:41.463708+00:00",
+  "calibration_method": "sequential_sector (capital \u2192 agriculture); pollution at baseline",
   "optimized_params": {
     "population.len_scale": 0.999150898912352,
     "population.mtfn_scale": 1.0,
     "population.initial_population": 1650000000.0,
-    "capital.initial_ic": 210000000000.0,
+    "capital.initial_ic": 100000000000.0,
     "capital.icor": 3.0,
     "capital.alic": 20.0,
     "capital.alsc": 20.0,
-    "agriculture.initial_al": 500000000.0,
-    "agriculture.initial_land_fertility": 300.0347700129619,
+    "agriculture.initial_al": 1481856982.9770412,
+    "agriculture.initial_land_fertility": 334.8526799650648,
     "agriculture.land_development_rate": 0.005,
     "agriculture.sfpc": 230.0,
     "resources.initial_nr": 1000000000000.0,
@@ -19,15 +20,13 @@
     "pollution.pptd": 111.8
   },
   "sector_nrmsd": {
-    "POP": 0.6777193924901473,
-    "IC": 1.199805171509852,
-    "AL": 0.056919793316190806,
-    "food_per_capita": 2.6066392545137136,
-    "pollution_generation": 1.37924067646095
+    "POP": 0.5432298042262038,
+    "IC": 1.215816722069137,
+    "AL": 0.011241011642901642,
+    "food_per_capita": 2.1308669507674285,
+    "pollution_generation": 1.3880297969648026
   },
-  "composite_train_nrmsd": 0.859463,
-  "composite_validation_nrmsd": 0.923549,
-  "overfit_flagged": false,
-  "optimization_time_seconds": 991.9,
-  "seed": 42
+  "composite_train_nrmsd": 0.863672,
+  "composite_validation_nrmsd": 0.908361,
+  "overfit_flagged": false
 }

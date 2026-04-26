@@ -1,15 +1,6 @@
 {
-  "capital.initial_ic": 249816047538.945,
+  "capital.initial_ic": 100000000000.0,
   "capital.icor": 3.0,
-  "capital.alic": 19.50714306409916,
-  "capital.alsc": 25.979909127171076,
-  "_calibration_notes": {
-    "status": "structural_floor",
-    "train_nrmsd": 1.4731,
-    "gate_revised_to": 1.6,
-    "reason": "IC change_rate NRMSD floor ~1.47 caused by PWT 1990 artifact (34% single-year jump from FSU/Eastern Europe inclusion in world aggregate). World3 capital model too simple to reproduce structural breaks. Capital params have near-flat sensitivity landscape (icor stayed at default 3.0). Phase 3 joint calibration expected to improve.",
-    "nrmsd_method": "change_rate",
-    "data_source": "penn_world_tables_rnna",
-    "date": "2026-04-21"
-  }
+  "capital.alic": 20.0,
+  "capital.alsc": 20.0
 }

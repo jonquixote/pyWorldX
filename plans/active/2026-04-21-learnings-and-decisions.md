@@ -105,3 +105,23 @@ Excluded `gdp.current_usd` and `gdp.per_capita` from the calibration objective v
 
 **The Learning:**
 When calibration reveals a variable that the optimizer cannot move across 100 Bayesian trials, it signals a **structural limitation**, not an under-explored parameter space. The correct response is exclusion with documentation, not more trials. The planned v2.0 modernisation (endogenous TFP, financial sector, service-sector value-added) is the structural path to making industrial output GDP-comparable.
+
+## 11. Sequential Sector Calibration Beats Joint Optimisation
+**The Problem:**
+Joint Optuna optimization over 16 parameters yielded only 2.8% train improvement, with the optimizer over-fitting (47% degradation) and spreading parameter changes across all sectors indiscriminately.
+
+**The Decision:**
+Switched to sequential sector calibration: capital → agriculture → pollution, with each pass freezing previously calibrated sectors. This constrains the search space to 3-4 params per pass, prevents cross-sector interference, and lets each sector converge independently.
+
+**The Learning:**
+Sequential calibration with frozen params dramatically outperformed joint optimization. The capital pass moved `initial_ic` -52%, agriculture moved `initial_al` +196% and `initial_land_fertility` +12%, and each pass showed holdout ≤ train (no overfitting). The final composite NRMSD (1.06) with 5.2% degradation is far better than joint optimisation's 2.33 with 47% degradation. When sectors have weak cross-coupling, sequential calibration is both faster and more stable.
+
+## 12. Pollution Params Control Assimilation, Not Generation
+**The Problem:**
+The pollution calibration pass moved zero parameters — `ahl70`, `initial_ppol`, and `pptd` returned at their input values despite 100 Bayesian trials. Train NRMSD was identical to the previous pass.
+
+**The Decision:**
+Accepted pollution_generation NRMSD at 1.39 as structurally limited. The three pollution-specific params control how fast pollution *decays*, not how fast it's *generated*. Generation is driven by industrial throughput (frozen). Unfreezing `icor` was considered but rejected to protect the clean capital calibration.
+
+**The Learning:**
+Before running optimisation, verify the causal graph: do the free parameters actually have a causal path to the target variable? World3's `pollution_generation` is a function of `industrial_output`, which is a function of capital params — not pollution params. The optimizer correctly reported zero gradient. See `uncertainties.md` §3.

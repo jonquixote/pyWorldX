@@ -1,0 +1,14 @@
+{
+  "population.len_scale": 0.999150898912352,
+  "population.mtfn_scale": 1.0,
+  "population.initial_population": 1650000000.0,
+  "agriculture.initial_al": 500000000.0,
+  "agriculture.initial_land_fertility": 300.0347700129619,
+  "agriculture.land_development_rate": 0.005,
+  "agriculture.sfpc": 230.0,
+  "resources.initial_nr": 1000000000000.0,
+  "resources.policy_year": 4000.0,
+  "pollution.initial_ppol": 25000000.0,
+  "pollution.ahl70": 0.5,
+  "pollution.pptd": 111.8
+}

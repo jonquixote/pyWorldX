@@ -87,3 +87,53 @@ IC is retained because the optimizer *can* improve it by adjusting
 ### Resolution path
 
 Same as §1 — endogenous TFP and capital deepening dynamics in v2.0.
+
+---
+
+## 3. `pollution_generation` — wrong levers for CO₂ emissions
+
+**Date:** 2026-04-26
+**Affected entity:** `emissions.co2_fossil` → `pollution_generation`
+**Status:** Retained in objective; pollution params left at baseline (structurally unfittable)
+
+### Background
+
+World3's pollution sector has three tuneable parameters:
+- `ahl70` — assimilation half-life (how fast pollution decays)
+- `initial_ppol` — initial pollution stock level
+- `pptd` — persistent pollution transmission delay
+
+These control **assimilation and persistence** — how quickly pollution
+dissipates once generated.  They do **not** control the generation rate
+itself, which is driven by `industrial_output` (capital throughput).
+
+### Evidence
+
+Sequential sector calibration with population, capital, and agriculture
+frozen showed the optimizer moved **zero** pollution parameters across
+the full pipeline (Morris screening + 100 Optuna trials + Nelder-Mead).
+All three params returned at their input values.  Train NRMSD was
+identical to the agriculture pass (1.12), confirming zero gradient
+from pollution params to `pollution_generation`.
+
+### Impact
+
+`pollution_generation` NRMSD sits at ~1.39 with the sequentially
+calibrated params.  This is acceptable — the trajectory shape is
+broadly correct (rising emissions track rising capital throughput)
+even though the optimizer cannot fine-tune it.
+
+### Why not unfreeze `icor`?
+
+Unfreezing `capital.icor` (capital output ratio) would give the
+optimizer an indirect lever on pollution via industrial throughput.
+This was considered but rejected: re-optimizing capital and pollution
+jointly risks destabilising the clean capital calibration (IC NRMSD
+1.22, holdout < train).  The marginal improvement on pollution would
+come at the cost of capital regression — a poor trade.
+
+### Resolution path
+
+Same as §1–2.  A v2.0 emissions module with explicit fossil fuel
+combustion rates and carbon intensity coefficients would decouple
+pollution generation from the coarse industrial throughput proxy.
