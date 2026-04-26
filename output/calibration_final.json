@@ -1,0 +1,63 @@
+{
+  "recorded_at": "2026-04-26T08:06:18.950974+00:00",
+  "calibration_method": "sequential_sector (capital -> agriculture); pollution + resources at baseline",
+  "calibration_passes": [
+    {
+      "sector": "population",
+      "status": "baseline (joint optimisation seed)"
+    },
+    {
+      "sector": "capital",
+      "params_moved": [
+        "initial_ic"
+      ],
+      "source": "output/calibrated_params/capital.json"
+    },
+    {
+      "sector": "agriculture",
+      "params_moved": [
+        "initial_al",
+        "initial_land_fertility"
+      ],
+      "source": "output/calibrated_params/agriculture.json"
+    },
+    {
+      "sector": "pollution",
+      "status": "structural limitation \u2014 wrong levers (uncertainties.md \u00a73)"
+    },
+    {
+      "sector": "resources",
+      "status": "no aligned empirical data (uncertainties.md \u00a74)"
+    }
+  ],
+  "optimized_params": {
+    "population.len_scale": 0.999150898912352,
+    "population.mtfn_scale": 1.0,
+    "population.initial_population": 1650000000.0,
+    "capital.initial_ic": 100000000000.0,
+    "capital.icor": 3.0,
+    "capital.alic": 20.0,
+    "capital.alsc": 20.0,
+    "agriculture.initial_al": 1481856982.9770412,
+    "agriculture.initial_land_fertility": 334.8526799650648,
+    "agriculture.land_development_rate": 0.005,
+    "agriculture.sfpc": 230.0,
+    "resources.initial_nr": 1000000000000.0,
+    "resources.policy_year": 4000.0,
+    "pollution.initial_ppol": 25000000.0,
+    "pollution.ahl70": 0.5,
+    "pollution.pptd": 111.8
+  },
+  "sector_nrmsd": {
+    "POP": 0.5432298042262038,
+    "IC": 1.215816722069137,
+    "AL": 0.011241011642901642,
+    "food_per_capita": 2.1308669507674285,
+    "pollution_generation": 1.3880297969648026
+  },
+  "composite_nrmsd": 1.057837,
+  "composite_train_nrmsd": 0.863672,
+  "composite_validation_nrmsd": 0.908361,
+  "degradation_pct": 5.17,
+  "overfit_flagged": false
+}

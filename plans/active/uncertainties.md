@@ -137,3 +137,45 @@ come at the cost of capital regression — a poor trade.
 Same as §1–2.  A v2.0 emissions module with explicit fossil fuel
 combustion rates and carbon intensity coefficients would decouple
 pollution generation from the coarse industrial throughput proxy.
+
+---
+
+## 4. Resources params at default — no aligned empirical data
+
+**Date:** 2026-04-26
+**Affected entities:**
+- `resources.nonrenewable_stock` → `NR`
+- `resources.extraction_index` → `resource_extraction_index`
+- `resources.depletion_ratio` → `reserve_depletion_ratio`
+
+**Status:** Params `initial_nr` and `policy_year` left at World3 defaults (1×10¹², 4000)
+
+### Background
+
+The resources sector has three engine variable mappings defined in
+`ENTITY_TO_ENGINE_MAP`, but **no aligned parquet files exist** for any
+of them.  The USGS mineral production pipeline (`data_pipeline/connectors/`)
+successfully ingests world production data for 90+ commodities, and the
+BP Statistical Review connector provides energy reserves — but neither
+has been wired through the alignment layer to produce parquets that map
+to `NR`, `resource_extraction_index`, or `reserve_depletion_ratio`.
+
+### Impact
+
+The sequential calibration CLI correctly exits with "No calibration
+targets matched sector 'resources'" when run in dry-run mode.
+`initial_nr` and `policy_year` remain at their World3 defaults.
+This is acceptable for the Phase 2 baseline: NR depletion in the
+calibrated engine shows 93.2% remaining at 2100, which is consistent
+with World3's standard run behaviour.
+
+### Resolution path
+
+1.  **Wire USGS → aligned parquets:** Create aggregate "total world
+    nonrenewable resource extraction" time series from the USGS mineral
+    production data, mapping it to `resource_extraction_index`.
+2.  **Wire BP → aligned parquets:** Map BP proved reserves totals to
+    `NR` (stock) and compute `reserve_depletion_ratio` as extraction/stock.
+3.  Re-run the resources calibration pass with the new data.
+
+This is planned data-pipeline work, not an engine structural limitation.
